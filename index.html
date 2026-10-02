@@ -13,6 +13,7 @@
   .cell:hover:not(:disabled) { background: #45475a; }
   .cell.win { background: #a6e3a1; }
   #reset { margin-top: 20px; padding: 10px 24px; font-size: 1.1rem; border: none; border-radius: 8px; background: #89b4fa; color: #1e1e2e; cursor: pointer; }
+  #music { margin-top: 20px; margin-left: 8px; padding: 10px 20px; font-size: 1.1rem; border: 2px solid #89b4fa; border-radius: 8px; background: transparent; color: #fff; cursor: pointer; }
   #score { margin-top: 12px; font-size: 1.1rem; }
 </style>
 </head>
@@ -20,7 +21,8 @@
 <h1>👍 vs 👎</h1>
 <div id="status"></div>
 <div id="board"></div>
-<button id="reset">New Game</button>
+<div><button id="reset">New Game</button>
+<button id="music" type="button">🔇 Music off</button></div>
 <div id="score"></div>
 <script>
   const UP = "👍", DOWN = "👎";
@@ -73,6 +75,27 @@
     document.getElementById("score").textContent =
       `${UP} ${score[UP]}  ·  ${DOWN} ${score[DOWN]}  ·  🤝 ${score.tie}`;
   }
+
+  // Simple looping tune, made with Web Audio (no files needed)
+  const TUNE = [523, 659, 784, 659, 587, 698, 880, 698, 523, 659, 784, 1047, 784, 659, 587, 523];
+  let audio = null, timer = null, step = 0;
+  function beep() {
+    const t = audio.currentTime, osc = audio.createOscillator(), gain = audio.createGain();
+    osc.type = "triangle";
+    osc.frequency.value = TUNE[step++ % TUNE.length];
+    gain.gain.setValueAtTime(0.08, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+    osc.connect(gain).connect(audio.destination);
+    osc.start(t); osc.stop(t + 0.26);
+  }
+  const musicBtn = document.getElementById("music");
+  musicBtn.onclick = () => {
+    if (timer) { clearInterval(timer); timer = null; musicBtn.textContent = "🔇 Music off"; return; }
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    audio.resume();
+    beep(); timer = setInterval(beep, 280);
+    musicBtn.textContent = "🎵 Music on";
+  };
 
   document.getElementById("reset").onclick = start;
   start();
