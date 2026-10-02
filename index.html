@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thumbs Tic-Tac-Toe</title>
+<style>
+  body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: system-ui, sans-serif; background: #1e1e2e; color: #fff; }
+  h1 { margin: 0 0 8px; }
+  #status { font-size: 1.4rem; margin-bottom: 16px; min-height: 2rem; }
+  #board { display: grid; grid-template-columns: repeat(3, min(28vw, 110px)); gap: 8px; }
+  .cell { aspect-ratio: 1; font-size: min(16vw, 64px); background: #313244; border: none; border-radius: 12px; cursor: pointer; }
+  .cell:hover:not(:disabled) { background: #45475a; }
+  .cell.win { background: #a6e3a1; }
+  #reset { margin-top: 20px; padding: 10px 24px; font-size: 1.1rem; border: none; border-radius: 8px; background: #89b4fa; color: #1e1e2e; cursor: pointer; }
+  #score { margin-top: 12px; font-size: 1.1rem; }
+</style>
+</head>
+<body>
+<h1>👍 vs 👎</h1>
+<div id="status"></div>
+<div id="board"></div>
+<button id="reset">New Game</button>
+<div id="score"></div>
+<script>
+  const UP = "👍", DOWN = "👎";
+  const LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+  const score = { [UP]: 0, [DOWN]: 0, tie: 0 };
+  let cells, turn, over, starter = UP;
+  const board = document.getElementById("board");
+  const status = document.getElementById("status");
+
+  function start() {
+    cells = Array(9).fill(null);
+    turn = starter;
+    starter = starter === UP ? DOWN : UP;
+    over = false;
+    board.innerHTML = "";
+    for (let i = 0; i < 9; i++) {
+      const b = document.createElement("button");
+      b.className = "cell";
+      b.onclick = () => play(i);
+      board.appendChild(b);
+    }
+    render();
+  }
+
+  function play(i) {
+    if (over || cells[i]) return;
+    cells[i] = turn;
+    const line = LINES.find(l => l.every(j => cells[j] === turn));
+    if (line) {
+      over = true;
+      score[turn]++;
+      line.forEach(j => board.children[j].classList.add("win"));
+      status.textContent = `${turn} wins!`;
+    } else if (cells.every(Boolean)) {
+      over = true;
+      score.tie++;
+      status.textContent = "It's a tie! 🤝";
+    } else {
+      turn = turn === UP ? DOWN : UP;
+    }
+    render();
+  }
+
+  function render() {
+    [...board.children].forEach((b, i) => {
+      b.textContent = cells[i] || "";
+      b.disabled = over || !!cells[i];
+    });
+    if (!over) status.textContent = `${turn}'s turn`;
+    document.getElementById("score").textContent =
+      `${UP} ${score[UP]}  ·  ${DOWN} ${score[DOWN]}  ·  🤝 ${score.tie}`;
+  }
+
+  document.getElementById("reset").onclick = start;
+  start();
+</script>
+</body>
+</html>
