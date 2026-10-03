@@ -5,6 +5,7 @@ const Sound = (() => {
   const SCALES = {
     major: [0, 2, 4, 5, 7, 9, 11],
     harm: [0, 2, 3, 5, 7, 8, 11],
+    minor: [0, 2, 3, 5, 7, 8, 10],
     lydian: [0, 2, 4, 6, 7, 9, 11],
     mixo: [0, 2, 4, 5, 7, 9, 10],
   };
@@ -81,6 +82,22 @@ const Sound = (() => {
       bass: { inst: 'tri', vol: 0.3, pat: 'x.......x...o...' },
       arp: { inst: 'pluck', vol: 0.05, pat: '0123210301232103' },
       drums: { kick: 'x.......x.......', hat: '..x...x...x...x.', clap: '............x...' },
+    },
+    battle: { // creature battles: fast, driving E minor with a heroic counter-melody
+      bpm: 152, root: 52, scale: 'minor', spb: 16, chords: [0, 5, 2, 6],
+      mels: [{ inst: 'square', vol: 0.08, oct: 1, bars: [
+        '1 . 3 5 1^ . 5 3 1 . 3 5 7 . 5 .',
+        '6_ . 1 3 6 . 3 1 6_ . 1 3 5 . 3 .',
+        '3 . 5 7 3^ . 7 5 3 . 5 7 2^ . 7 .',
+        '7_ . 2 4 7 . 4 2 7_ . 2 4 6 . 5 .'] },
+      { inst: 'supersaw', vol: 0.07, oct: 1, bars: [
+        '5 . . . . . . . 4 . . . 3 . . .',
+        '3 . . . . . . . 1 . . . 6_ . . .',
+        '5 . . . . . . . 3 . . . 2 . . .',
+        '4 . . . . . . . 2 . . . 7_ . . .'] }],
+      bass: { inst: 'sawbass', vol: 0.18, pat: 'x.x.xoxox.x.xoxo' },
+      drums: { kick: 'x..xx..xx..xx.x.', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.', crash: 'x...............' },
+      crashEvery: 4,
     },
     boss: { // INTENSE: harmonic minor, driving bass, power stabs, heavy drums
       bpm: 168, root: 57, scale: 'harm', spb: 16, chords: [0, 5, 3, 4],

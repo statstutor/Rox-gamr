@@ -324,7 +324,7 @@ const HELP_STEPS = [
   { icon: '⬆️⬇️⬅️➡️', title: 'Dig!', text: 'Use the arrow keys (or WASD, or the on-screen buttons) to dig tunnels.' },
   { icon: '📋', title: 'Do your tasks', text: 'Your Task Bar shows what to find. Finish them all for a new wave of tasks.' },
   { icon: '🗿📜', title: 'Solve mysteries', text: 'Riddle Stones 🗿 and clever creatures ask riddles. Clue scrolls 📜 help you solve the world\'s mystery.' },
-  { icon: '⚔️', title: 'Battle!', text: 'Bump into mean creatures to fight. Friendly ones 💬 may help you or give gifts!' },
-  { icon: '🥋', title: 'Boss time', text: 'Beat 3 waves to find the Boss. You turn into KARATE HAMSTER!' },
+  { icon: '🥋', title: 'Battle!', text: 'Creatures hide in the dirt! Bump into a mean one and you turn into KARATE HAMSTER to fight. Friendly ones 💬 may help you.' },
+  { icon: '👑', title: 'Boss time', text: 'Beat 3 waves to find the Boss. Win to earn a new karate belt!' },
   { icon: '⭐🎀', title: 'Grow & dress up', text: 'Level up to learn skills. Find accessories 🎁 and wear them in Dress Up!' },
 ];

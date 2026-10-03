@@ -424,15 +424,7 @@ function spawnObj(type, extra = {}, minD = 5, maxD = 26) {
 function spawnCreature(def, role, minD = 8, maxD = 30) {
   const p = freeSpot(minD, maxD);
   if (!p) return;
-  // carve a cosy little cave for the creature
-  G.map[p.y * G.W + p.x] = OPEN;
-  const n = randi(1, 3);
-  let cx = p.x, cy = p.y;
-  for (let i = 0; i < n; i++) {
-    const [dx, dy] = pick([[1, 0], [-1, 0], [1, 0], [-1, 0], [0, 1]]);
-    const nx = cx + dx, ny = cy + dy;
-    if (tileAt(nx, ny) === DIRT && ny > 4 && nx > 0 && nx < G.W - 1) { G.map[ny * G.W + nx] = OPEN; cx = nx; cy = ny; }
-  }
+  // creatures hide inside the dirt; they only come out into tunnels you dig
   G.cr.push({ def, role, x: p.x, y: p.y, px: p.x, py: p.y, cd: rand(0.5, 2), stun: 0, alert: 0, talkCd: 0, gave: false, done: false, met: false });
 }
 
@@ -989,8 +981,12 @@ function drawTf(dt) {
 let B = null;
 let meter = null;
 
+// belt worn in normal battles: the best belt earned so far (white to start)
+function currentBelt() { const i = S.beaten.lastIndexOf(true); return i >= 0 ? BELTS[i] : '#f4f4f4'; }
+
 function startBattle(c, boss = false) {
   keys.length = 0;
+  if (!boss) Sound.play('battle');
   const d = boss ? G.wd.boss : c.def;
   B = {
     c, boss, d, name: d.name, hp: d.hp, max: d.hp, atk: d.atk, xp: d.xp,
@@ -1004,7 +1000,7 @@ function startBattle(c, boss = false) {
   $('#bFoeStatus').textContent = '';
   $('#battle').classList.remove('hidden');
   if (boss) blog(`<b>${d.name}</b>: <i>${esc(d.lines[0])}</i>`);
-  else blog(`A ${d.name} ${d.e} wants to battle!`);
+  else blog(`A ${d.name} ${d.e} wants to battle! 🥋 You switch into <b>KARATE MODE!</b>`);
   renderBattle();
 }
 
@@ -1017,7 +1013,7 @@ function blog(html) {
 function renderBattle() {
   if (!B) return;
   const mh = maxHp();
-  $('#bMeName').textContent = displayName() + (B.boss ? ' 🥋' : '');
+  $('#bMeName').textContent = displayName() + ' 🥋';
   $('#bMeLv').textContent = S.level;
   $('#bMeHp').style.width = (S.hp / mh * 100) + '%';
   $('#bMeHpTxt').textContent = `❤️ ${S.hp} / ${mh}`;
@@ -1026,7 +1022,8 @@ function renderBattle() {
   $('#bFoeName').textContent = B.name;
   $('#bFoeHp').style.width = (B.hp / B.max * 100) + '%';
   $('#bFoeHpTxt').textContent = `${B.hp} / ${B.max}`;
-  const list = B.boss ? KARATE_MOVES : SKILLS.filter(s => S.level >= s.lvl);
+  // boss fights use the full karate move set; normal fights use Karate Chop plus your learned skills
+  const list = B.boss ? KARATE_MOVES : [KARATE_MOVES[0], ...SKILLS.filter(s => s.id !== 'swipe' && S.level >= s.lvl)];
   const dis = B.busy || B.over;
   const html = list.map(m => `<button class="btn ${m.pep ? 'pink' : ''}" data-act="${m.id}" ${dis || B.pep < m.pep ? 'disabled' : ''}>${m.icon} ${m.name}<small>${m.pep ? m.pep + ' pep' : 'free'}${m.heal ? ' · heal' : ''}</small></button>`).join('')
     + `<button class="btn green" data-act="snackitem" ${dis || S.snacks <= 0 || S.hp >= mh ? 'disabled' : ''}>🍓 Snack<small>you have ${S.snacks}</small></button>`
@@ -1050,7 +1047,7 @@ async function act(id) {
   if (!B || B.busy || B.over) return;
   B.busy = true;
   renderBattle();
-  const mv = (B.boss ? KARATE_MOVES : SKILLS).find(m => m.id === id);
+  const mv = [...KARATE_MOVES, ...SKILLS].find(m => m.id === id);
   if (id === 'snackitem') {
     S.snacks--; healPct(0.35, '🍓 You munch a snack.');
   } else if (id === 'run') {
@@ -1204,6 +1201,7 @@ async function winBattle() {
   S.record.fights++;
   if (b.boss) return bossWon(b);
   G.cr = G.cr.filter(x => x !== b.c);
+  Sound.play('w' + G.w);
   toast(`🏆 +${b.xp} XP`, 'gold');
   gainXP(b.xp);
   if (Math.random() < 0.25 + S.stats.luck * 0.05) { S.snacks++; toast(`${b.d.e} dropped a 🍓 snack!`, 'good'); }
@@ -1229,6 +1227,7 @@ async function loseBattle() {
     Sound.play('w' + G.w);
     showModal({ icon: '💫', title: `${b.name} was too strong!`, body: `<p>${helper.e} ${helper.name} carried you home to rest.</p><p>Level up, spend your skill points ⭐, and grab some snacks 🍓 - then go back to the 🌀 Boss Lair for a rematch!</p>` });
   } else {
+    Sound.play('w' + G.w);
     showModal({ icon: '💫', title: 'You fainted!', body: `<p>Don't worry! ${helper.e} ${helper.name} carried you back home. You're all rested now!</p>` });
   }
   updateHUD(); persist();
@@ -1236,6 +1235,7 @@ async function loseBattle() {
 
 function endBattle() {
   $('#battle').classList.add('hidden');
+  Sound.play('w' + G.w);
   if (B && B.c) B.c.stun = 3;
   B = null;
   updateHUD(); persist();
@@ -1281,7 +1281,7 @@ function drawBattle(dt) {
   if (B.meHurt > 0 && Math.floor(t * 20) % 2) x1.globalAlpha = 0.4;
   const lunge = Math.sin(B.meLunge * Math.PI);
   drawHamster(x1, 115 + lunge * 60, 120, 150, {
-    color: S.color, equipped: S.equipped, karate: B.boss, belt: BELTS[G.w], t, bob: true,
+    color: S.color, equipped: S.equipped, karate: true, belt: B.boss ? BELTS[G.w] : currentBelt(), t, bob: true,
     blink: (t % 3.5) < 0.12, punch: lunge, tilt: lunge * 0.15,
   });
   x1.restore();
