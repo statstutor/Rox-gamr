@@ -2,12 +2,12 @@
 'use strict';
 
 const HAM_COLORS = {
-  golden: { name: 'Golden', body: '#f4b860', belly: '#fff3dc' },
+  golden: { name: 'Golden', body: '#ecc189', belly: '#fffaf5' },
   cream: { name: 'Cream', body: '#f6e2bf', belly: '#fffaf0' },
   ginger: { name: 'Ginger', body: '#ec8a4c', belly: '#ffe6cf' },
   chocolate: { name: 'Cocoa', body: '#8e5d3f', belly: '#eccdaa' },
   gray: { name: 'Silver', body: '#adadba', belly: '#f1f1f6' },
-  snow: { name: 'Snowy', body: '#fbfbfb', belly: '#ffe8ef' },
+  snow: { name: 'Snowy', body: '#e4ddd6', belly: '#ffffff' },
   midnight: { name: 'Midnight', body: '#4a4a5c', belly: '#cfcfe0' },
   pink: { name: 'Bubblegum', body: '#ffb1c8', belly: '#fff0f5' },
   sky: { name: 'Sky Blue', body: '#9fd6ff', belly: '#eef8ff' },
