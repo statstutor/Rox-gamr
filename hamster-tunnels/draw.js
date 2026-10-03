@@ -255,18 +255,45 @@ function drawHamster(ctx, x, y, size, o = {}) {
   if (o.shadow !== false) { ell(ctx, 0, 1.06, 0.85, 0.1); ctx.fillStyle = 'rgba(0,0,0,0.15)'; ctx.fill(); }
   if (eq.back && ACC_DRAW[eq.back]) { ctx.lineWidth = 0.06; ACC_DRAW[eq.back](ctx, t); }
   if (o.karate) drawHeadbandTails(ctx, t);
+  const pika = o.color === 'pikachu';
 
   ctx.lineWidth = 0.04;
-  // ears
-  for (const sx of [-1, 1]) {
-    circ(ctx, sx * 0.56, -0.8, 0.24); fillStroke(ctx, col.body, HAM_LINE);
-    circ(ctx, sx * 0.6, -0.78, 0.14); fillStroke(ctx, pink);
+  if (pika) {
+    // lightning-bolt tail peeking out on the right
+    const tw = Math.sin(t * 3) * 0.04;
+    ctx.beginPath();
+    [[0.7, 0.55], [1.1, 0.3 + tw], [0.98, 0.18 + tw], [1.38, -0.12 + tw], [1.24, -0.22 + tw], [1.62, -0.58 + tw],
+      [1.22, -0.5 + tw], [1.36, -0.32 + tw], [0.98, -0.06 + tw], [1.1, 0.06 + tw], [0.72, 0.3]].forEach(([px, py], i) => i ? ctx.lineTo(px, py) : ctx.moveTo(px, py));
+    ctx.closePath(); fillStroke(ctx, col.belly, HAM_LINE);
+    // long pointy ears with black tips
+    for (const sx of [-1, 1]) {
+      ctx.save(); ctx.translate(sx * 0.42, -0.78); ctx.rotate(sx * 0.42);
+      ctx.beginPath(); ctx.moveTo(-0.17, 0.05); ctx.quadraticCurveTo(-0.2, -0.5, 0, -0.85); ctx.quadraticCurveTo(0.2, -0.5, 0.17, 0.05); ctx.closePath();
+      fillStroke(ctx, col.belly, HAM_LINE);
+      ctx.save(); ctx.clip();
+      ctx.fillStyle = '#2b1d16'; ctx.fillRect(-0.3, -0.9, 0.6, 0.32);
+      ctx.restore();
+      ctx.beginPath(); ctx.moveTo(-0.17, 0.05); ctx.quadraticCurveTo(-0.2, -0.5, 0, -0.85); ctx.quadraticCurveTo(0.2, -0.5, 0.17, 0.05);
+      ctx.strokeStyle = HAM_LINE; ctx.stroke();
+      ctx.restore();
+    }
+  } else {
+    // ears
+    for (const sx of [-1, 1]) {
+      circ(ctx, sx * 0.56, -0.8, 0.24); fillStroke(ctx, col.body, HAM_LINE);
+      circ(ctx, sx * 0.6, -0.78, 0.14); fillStroke(ctx, pink);
+    }
   }
   // body
   hamsterPath(ctx); ctx.fillStyle = col.belly; ctx.fill();
   ctx.save();
   hamsterPath(ctx); ctx.clip();
-  // coloured patch over the top-left of the head
+  // coloured patch over the top-left of the head (Pikachu has two back stripes peeking over the top instead)
+  if (pika) {
+    ctx.fillStyle = '#b8862a';
+    ell(ctx, -0.2, -1.0, 0.16, 0.06, -0.15); ctx.fill();
+    ell(ctx, 0.22, -0.99, 0.16, 0.06, 0.15); ctx.fill();
+  } else {
   ctx.beginPath();
   ctx.moveTo(-1, -0.25);
   ctx.quadraticCurveTo(-0.55, -0.3, -0.38, -0.5);
@@ -274,14 +301,15 @@ function drawHamster(ctx, x, y, size, o = {}) {
   ctx.quadraticCurveTo(0.12, -0.85, 0.08, -1.1);
   ctx.lineTo(-1, -1.1); ctx.closePath();
   ctx.fillStyle = col.body; ctx.fill();
+  }
   if (o.karate) drawGi(ctx, col, o.belt || '#222');
   ctx.restore();
   ctx.lineWidth = 0.04;
   hamsterPath(ctx); ctx.strokeStyle = HAM_LINE; ctx.stroke();
 
   // cheeks
-  ctx.fillStyle = 'rgba(240,140,140,0.55)';
-  for (const sx of [-1, 1]) { circ(ctx, sx * 0.55, -0.1, 0.17); ctx.fill(); }
+  ctx.fillStyle = pika ? '#e8412f' : 'rgba(240,140,140,0.55)';
+  for (const sx of [-1, 1]) { circ(ctx, sx * 0.55, -0.1, pika ? 0.15 : 0.17); ctx.fill(); }
   // eyes
   for (const sx of [-1, 1]) {
     const ex = sx * 0.36, ey = -0.32;

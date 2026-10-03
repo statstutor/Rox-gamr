@@ -13,6 +13,7 @@ const HAM_COLORS = {
   sky: { name: 'Sky Blue', body: '#9fd6ff', belly: '#eef8ff' },
   lavender: { name: 'Lavender', body: '#c7b2ff', belly: '#f4efff' },
   mint: { name: 'Mint', body: '#9fe8c3', belly: '#eefff6' },
+  pikachu: { name: 'Pikachu', body: '#f6c21b', belly: '#ffdc3a', secret: true },
 };
 
 const ACCESSORIES = {

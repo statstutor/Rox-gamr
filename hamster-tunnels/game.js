@@ -43,6 +43,14 @@ async function hashPw(pw, salt, algo) {
   h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
   return 'fb' + (h1 >>> 0).toString(16) + (h2 >>> 0).toString(16);
 }
+// No two accounts may share a password: hash the new one with each account's salt and compare.
+async function passwordInUse(pw) {
+  for (const rec of Object.values(DB.users)) {
+    if (rec.algo === 'sha' && !canSha()) continue;
+    if (await hashPw(pw, rec.salt, rec.algo) === rec.hash) return true;
+  }
+  return false;
+}
 const canSha = () => !!(window.crypto && crypto.subtle && window.isSecureContext !== false);
 
 function newSave(color) {
@@ -119,6 +127,7 @@ $('#authForm').addEventListener('submit', async e => {
   if (authMode === 'signup') {
     if (pw !== $('#authPass2').value) return msg('The two passwords don\'t match!');
     if (DB.users[key]) return msg('That username is taken. Try another!');
+    if (await passwordInUse(pw)) return msg('Someone already uses that password. Please pick a different one!');
     const salt = [...crypto.getRandomValues(new Uint8Array(12))].map(b => b.toString(16).padStart(2, '0')).join('');
     const algo = canSha() ? 'sha' : 'fb';
     DB.users[key] = { name, salt, algo, hash: await hashPw(pw, salt, algo), save: null };
@@ -134,16 +143,32 @@ $('#authForm').addEventListener('submit', async e => {
     USER = key; S = rec.save;
     Sound.sfx('correct');
     if (!S) startColorPick();
-    else { if (S.hp == null) S.hp = maxHp(); show('menu'); toast(`Welcome back, ${esc(rec.name)}! 🐹`, 'good'); }
+    else { if (S.hp == null) S.hp = maxHp(); syncSecretSkin(); show('menu'); toast(`Welcome back, ${esc(rec.name)}! 🐹`, 'good'); }
   }
   $('#authPass').value = ''; $('#authPass2').value = '';
 });
+
+// ---------- secret skins ----------
+const hasPikaName = () => /pikachu/i.test(displayName());
+const colorAllowed = id => !HAM_COLORS[id].secret || (id === 'pikachu' && hasPikaName());
+// Called after login, account creation and renaming.
+function syncSecretSkin() {
+  if (!S) return;
+  if (hasPikaName()) {
+    if (!S.pikaGiven) { S.pikaGiven = true; S.color = 'pikachu'; }
+  } else {
+    S.pikaGiven = false;
+    if (S.color === 'pikachu') S.color = 'golden';
+  }
+  persist();
+}
 
 // ---------- colour pick ----------
 let pickColor = 'golden';
 function buildSwatches(el, current, onPick) {
   el.innerHTML = '';
   for (const [id, c] of Object.entries(HAM_COLORS)) {
+    if (!colorAllowed(id)) continue;
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'swatch' + (id === current ? ' sel' : '');
     b.style.background = c.body; b.style.setProperty('--belly', c.belly); b.title = c.name;
@@ -152,7 +177,7 @@ function buildSwatches(el, current, onPick) {
   }
 }
 function startColorPick() {
-  pickColor = 'golden';
+  pickColor = hasPikaName() ? 'pikachu' : 'golden';
   $('#colorName').textContent = HAM_COLORS[pickColor].name;
   buildSwatches($('#colorSwatches'), pickColor, id => { pickColor = id; $('#colorName').textContent = HAM_COLORS[id].name; });
   show('color');
@@ -160,7 +185,8 @@ function startColorPick() {
 $('#colorDone').addEventListener('click', () => {
   S = newSave(pickColor);
   S.hp = maxHp();
-  persist();
+  if (pickColor === 'pikachu') S.pikaGiven = true;
+  syncSecretSkin();
   show('menu');
   toast(`Welcome, ${esc(displayName())}! Let's dig! 🎉`, 'good');
 });
@@ -175,6 +201,36 @@ $('#btnDress').addEventListener('click', () => { returnTo = null; show('dress');
 $('#btnWorlds').addEventListener('click', () => { returnTo = null; show('worlds'); });
 $('#btnSkills').addEventListener('click', () => { returnTo = null; show('skills'); });
 $('#btnJournal').addEventListener('click', () => { returnTo = null; show('journal'); });
+$('#btnRename').addEventListener('click', () => renameDialog());
+function renameDialog(prefill = displayName(), error = '') {
+  showModal({
+    icon: '✏️', title: 'Change your name',
+    body: `<p>Pick a new name for your hamster. You'll use it to log in next time.</p>
+      <input id="renameInput" maxlength="16" value="${esc(prefill)}" autocomplete="off">
+      ${error ? `<div class="msg">${esc(error)}</div>` : ''}`,
+    buttons: [
+      { label: 'Save name', cls: 'green', onClick: () => doRename($('#renameInput').value.trim()) },
+      { label: 'Cancel', cls: 'ghost' },
+    ],
+  });
+  setTimeout(() => { const i = $('#renameInput'); if (i) { i.focus(); i.select(); } }, 50);
+}
+function doRename(name) {
+  const key = name.toLowerCase();
+  if (!/^[A-Za-z0-9_ ]{3,16}$/.test(name)) return renameDialog(name, 'Names need 3-16 letters or numbers.');
+  if (key !== USER && DB.users[key]) return renameDialog(name, 'That name is taken. Try another!');
+  const rec = DB.users[USER];
+  delete DB.users[USER];
+  rec.name = name;
+  DB.users[key] = rec;
+  USER = key;
+  saveDB();
+  syncSecretSkin();
+  Sound.sfx('correct');
+  renderMenu();
+  toast(`Your name is now <b>${esc(name)}</b>!`, 'good');
+}
+
 $('#btnLogout').addEventListener('click', () => {
   persist(); USER = null; S = null; G = null; returnTo = null;
   $('#authUser').value = '';
@@ -543,7 +599,7 @@ function ensureSpawns() {
         break;
       }
       case 'riddle': {
-        const have = countObjs(o => o.type === 'stone') + G.cr.filter(c => (c.role === 'riddler' || c.role === 'mystery') && !c.done).length;
+        const have = countObjs(o => o.type === 'stone') + G.cr.filter(c => (c.role === 'riddler' || c.role === 'mystery') && !c.solved).length;
         for (let i = have; i < want; i++) spawnObj('stone');
         break;
       }
@@ -631,7 +687,7 @@ function sniffTargets() {
     }
     for (const c of G.cr) {
       if ((t.type === 'defeat' && c.role === 'hostile' && (!t.key || c.def.id === t.key)) ||
-        (t.type === 'riddle' && (c.role === 'riddler' || c.role === 'mystery') && !c.done) ||
+        (t.type === 'riddle' && (c.role === 'riddler' || c.role === 'mystery') && !c.solved) ||
         (t.type === 'friend' && c.role !== 'hostile' && !c.met)) out.push({ x: c.x, y: c.y });
     }
     if (t.type === 'depth') out.push({ x: G.ham.x, y: HOME.y + t.need });
@@ -698,11 +754,15 @@ function tryMove(dx, dy) {
   const h = G.ham, nx = h.x + dx, ny = h.y + dy;
   if (ny < HOME.y) return bump();
   const c = crAt(nx, ny);
-  if (c) { keys.length = 0; return meetCreature(c); }
+  if (c && !canPass(c)) { keys.length = 0; return meetCreature(c); }
   const t = tileAt(nx, ny);
   if (t === STONE || t === SKY) return bump();
   if (t === DIRT) { h.digging = true; h.dt = 0; h.ddur = digTime(); h.tx = nx; h.ty = ny; return; }
   startMove(nx, ny, 0.13);
+}
+// Friends you've already talked to step aside; riddlers only once you've solved their riddle.
+function canPass(c) {
+  return (c.role === 'helper' && c.met) || (c.role === 'riddler' && c.solved);
 }
 function bump() { if (G.bumpCd <= 0) { Sound.sfx('bump'); G.bumpCd = 0.35; } }
 function startMove(nx, ny, dur) { const h = G.ham; h.moving = true; h.mt = 0; h.mdur = dur; h.tx = nx; h.ty = ny; }
@@ -907,7 +967,7 @@ function meetCreature(c) {
     // a new riddle every time you talk to them
     const speech = c.asked ? 'Back for more? Here\'s a brand new riddle!' : pick(d.lines);
     c.asked = true;
-    askRiddle({ icon: d.e, title: d.name, speech, who: c }, ok => { if (ok) riddleSolved(); }, c.lastRiddle ?? -1);
+    askRiddle({ icon: d.e, title: d.name, speech, who: c }, ok => { if (ok) { c.solved = true; riddleSolved(); } }, c.lastRiddle ?? -1);
   }
 }
 
@@ -1465,7 +1525,7 @@ function render(dt) {
     let tag = null;
     if (cr.role === 'hostile' && cr.alert) tag = '❗';
     else if (cr.role === 'mystery') tag = '❓';
-    else if ((cr.role === 'helper' && !cr.gave) || (cr.role === 'riddler' && !cr.done)) tag = '💬';
+    else if ((cr.role === 'helper' && !cr.gave) || (cr.role === 'riddler' && !cr.solved)) tag = '💬';
     if (tag) drawEmoji(ctx, tag, px + T * 0.3, py - T * 0.45 + Math.sin(G.t * 6) * 2, T * 0.38);
   }
   // hamster
@@ -1571,7 +1631,7 @@ function drawPreview(id, opts, size) {
   ctx.clearRect(0, 0, cv.width, cv.height);
   drawHamster(ctx, cv.width / 2, cv.height / 2 + 6, size, { t: gTime, bob: true, blink: (gTime % 4) < 0.13, ...opts });
 }
-const AUTH_COLORS = Object.keys(HAM_COLORS);
+const AUTH_COLORS = Object.keys(HAM_COLORS).filter(id => !HAM_COLORS[id].secret);
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
