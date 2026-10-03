@@ -224,10 +224,8 @@ function drawStar(ctx, x, y, r) {
 const HAM_LINE = '#5b1f1f';
 function hamsterPath(ctx) {
   const R = [ // right half: [cp1x, cp1y, cp2x, cp2y, x, y]
-    [0.47, -1.0, 0.8, -0.76, 0.8, -0.3], // round head
-    [0.8, -0.14, 0.79, -0.04, 0.82, 0.03], // cheek, then a little notch
-    [1.02, 0.12, 1.13, 0.38, 1.07, 0.64], // chubby body
-    [1.0, 1.0, 0.5, 1.07, 0, 1.07], // round bottom
+    [0.56, -1.0, 1.02, -0.56, 1.02, 0.03], // evenly round top half
+    [1.02, 0.6, 0.56, 1.06, 0, 1.06], // evenly round bottom half
   ];
   ctx.beginPath(); ctx.moveTo(0, -1.0);
   for (const c of R) ctx.bezierCurveTo(...c);
