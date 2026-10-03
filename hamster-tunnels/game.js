@@ -150,17 +150,24 @@ $('#authForm').addEventListener('submit', async e => {
 
 // ---------- secret skins ----------
 const hasPikaName = () => /pikachu/i.test(displayName());
-const colorAllowed = id => !HAM_COLORS[id].secret || (id === 'pikachu' && hasPikaName());
+// Once earned, the Pikachu skin is yours to keep, even after a name change.
+const colorAllowed = id => !HAM_COLORS[id].secret || (id === 'pikachu' && ((S && S.pikaGiven) || hasPikaName()));
 // Called after login, account creation and renaming.
 function syncSecretSkin() {
   if (!S) return;
-  if (hasPikaName()) {
-    if (!S.pikaGiven) { S.pikaGiven = true; S.color = 'pikachu'; }
-  } else {
-    S.pikaGiven = false;
-    if (S.color === 'pikachu') S.color = 'golden';
+  if (hasPikaName() && !S.pikaGiven) {
+    S.pikaGiven = true; S.color = 'pikachu';
+    pikaZap();
   }
   persist();
+}
+// Lightning crash + flash whenever you turn into Pikachu
+function pikaZap() {
+  Sound.init(); Sound.sfx('lightning');
+  const f = document.createElement('div');
+  f.className = 'zap-flash';
+  document.body.appendChild(f);
+  setTimeout(() => f.remove(), 1200);
 }
 
 // ---------- colour pick ----------
@@ -172,12 +179,18 @@ function buildSwatches(el, current, onPick) {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'swatch' + (id === current ? ' sel' : '');
     b.style.background = c.body; b.style.setProperty('--belly', c.belly); b.title = c.name;
-    b.addEventListener('click', () => { onPick(id); el.querySelectorAll('.swatch').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); Sound.sfx('pickup'); });
+    b.addEventListener('click', () => {
+      const wasPika = current === 'pikachu';
+      onPick(id); current = id;
+      el.querySelectorAll('.swatch').forEach(x => x.classList.remove('sel')); b.classList.add('sel');
+      if (id === 'pikachu' && !wasPika) pikaZap(); else Sound.sfx('pickup');
+    });
     el.appendChild(b);
   }
 }
 function startColorPick() {
   pickColor = hasPikaName() ? 'pikachu' : 'golden';
+  if (pickColor === 'pikachu') setTimeout(pikaZap, 250);
   $('#colorName').textContent = HAM_COLORS[pickColor].name;
   buildSwatches($('#colorSwatches'), pickColor, id => { pickColor = id; $('#colorName').textContent = HAM_COLORS[id].name; });
   show('color');

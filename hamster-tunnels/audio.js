@@ -358,6 +358,25 @@ const Sound = (() => {
       case 'miss': noise(t, 0.2, 'highpass', 3000, 0.15, sfxBus); break;
       case 'warn': seq([81, null, 81, null, 81], 'square', 0.08, 0.1); break;
       case 'victory': seq([72, 72, 72, 72, null, 68, null, 70, null, 72, null, 70, 72, null, null, null], 'square', 0.1, 0.14); break;
+      case 'lightning': {
+        // electric zaps: sawtooth with a fast wobbling pitch
+        [0, 0.18, 0.3].forEach((d, i) => {
+          const o = ctx.createOscillator(), lfo = ctx.createOscillator(), lg = ctx.createGain(), g = ctx.createGain();
+          o.type = 'sawtooth'; o.frequency.setValueAtTime(1800 - i * 400, t + d); o.frequency.exponentialRampToValueAtTime(120, t + d + 0.22);
+          lfo.type = 'square'; lfo.frequency.value = 55 + i * 20; lg.gain.value = 600;
+          lfo.connect(lg); lg.connect(o.frequency);
+          g.gain.setValueAtTime(0.12, t + d); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.24);
+          o.connect(g); g.connect(sfxBus);
+          o.start(t + d); lfo.start(t + d); o.stop(t + d + 0.26); lfo.stop(t + d + 0.26);
+        });
+        // the CRACK: a few sharp crackles
+        for (let i = 0; i < 6; i++) noise(t + 0.42 + i * 0.025 + Math.random() * 0.02, 0.05, 'highpass', 2500 + Math.random() * 3000, 0.45, sfxBus);
+        noise(t + 0.42, 0.3, 'bandpass', 1200, 0.5, sfxBus, 0.7);
+        // rolling thunder
+        noise(t + 0.5, 1.8, 'lowpass', 220, 0.9, sfxBus);
+        drum('kick', t + 0.44, sfxBus);
+        break;
+      }
       case 'transform': {
         const o = ctx.createOscillator(), g = ctx.createGain();
         o.type = 'sawtooth'; o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(1600, t + 1.8);
