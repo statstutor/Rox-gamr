@@ -55,7 +55,7 @@ const canSha = () => !!(window.crypto && crypto.subtle && window.isSecureContext
 
 function newSave(color) {
   return {
-    color, equipped: { head: null, face: null, neck: null, back: null }, owned: [],
+    color, mood: 'happy', equipped: { head: null, face: null, neck: null, back: null }, owned: [],
     level: 1, xp: 0, points: 0, stats: { str: 0, tough: 0, dig: 0, luck: 0 },
     hp: null, snacks: 2, unlocked: 1, beaten: [false, false, false, false], current: 0,
     worlds: [0, 1, 2, 3].map(() => ({ wave: 1, tasks: null, clues: 0, solved: false, intro: false, maxDepth: 0 })),
@@ -172,6 +172,17 @@ function pikaZap() {
 
 // ---------- colour pick ----------
 let pickColor = 'golden';
+let pickMood = 'happy';
+function buildMoods(el, current, onPick) {
+  el.innerHTML = '';
+  for (const [id, m] of Object.entries(MOODS)) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'mood' + (id === current ? ' sel' : ''); b.title = m.name;
+    b.innerHTML = `<span class="ic">${m.icon}</span>${m.name}`;
+    b.addEventListener('click', () => { onPick(id); el.querySelectorAll('.mood').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); Sound.sfx('talk'); });
+    el.appendChild(b);
+  }
+}
 function buildSwatches(el, current, onPick) {
   el.innerHTML = '';
   for (const [id, c] of Object.entries(HAM_COLORS)) {
@@ -191,12 +202,15 @@ function buildSwatches(el, current, onPick) {
 function startColorPick() {
   pickColor = hasPikaName() ? 'pikachu' : 'golden';
   if (pickColor === 'pikachu') setTimeout(pikaZap, 250);
+  pickMood = 'happy';
+  buildMoods($('#moodPick'), pickMood, id => { pickMood = id; });
   $('#colorName').textContent = HAM_COLORS[pickColor].name;
   buildSwatches($('#colorSwatches'), pickColor, id => { pickColor = id; $('#colorName').textContent = HAM_COLORS[id].name; });
   show('color');
 }
 $('#colorDone').addEventListener('click', () => {
   S = newSave(pickColor);
+  S.mood = pickMood;
   S.hp = maxHp();
   if (pickColor === 'pikachu') S.pikaGiven = true;
   syncSecretSkin();
@@ -262,6 +276,7 @@ $('#helpGo').addEventListener('click', () => enterWorld(S.current || 0));
 let dressSlot = 'head';
 function renderDress() {
   buildSwatches($('#dressColors'), S.color, id => { S.color = id; persist(); });
+  buildMoods($('#dressMoods'), S.mood || 'happy', id => { S.mood = id; persist(); });
   $('#accCount').textContent = `(${S.owned.length}/${Object.keys(ACCESSORIES).length} found)`;
   $('#dressTabs').innerHTML = SLOTS.map(s => `<button type="button" class="tab ${s === dressSlot ? 'active' : ''}" data-slot="${s}">${SLOT_NAMES[s]}</button>`).join('');
   $$('#dressTabs .tab').forEach(t => t.addEventListener('click', () => { dressSlot = t.dataset.slot; renderDress(); }));
@@ -361,7 +376,7 @@ function nextModal() {
     body.appendChild(cv);
     const eq = { ...S.equipped };
     if (o.preview.acc) eq[ACCESSORIES[o.preview.acc].slot] = o.preview.acc;
-    drawHamster(cv.getContext('2d'), 85, 82, 105, { color: S.color, equipped: eq, t: 0 });
+    drawHamster(cv.getContext('2d'), 85, 82, 105, { color: S.color, mood: S.mood, equipped: eq, t: 0 });
   }
   const close = fn => {
     $('#modal').classList.add('hidden'); modalOpen = false;
@@ -1044,7 +1059,7 @@ function drawTf(dt) {
   ctx.save(); ctx.translate(cx, cy);
   ctx.scale(Math.cos(spin) || 0.01, 1);
   drawHamster(ctx, 0, 0, karate ? 230 + Math.max(0, 0.5 - (t - 1.8)) * 120 : 200, {
-    color: S.color, equipped: S.equipped, karate, belt: BELTS[G.w], t, punch: karate ? Math.max(0, Math.sin((t - 1.8) * 6)) * 0.6 : 0,
+    color: S.color, mood: S.mood, equipped: S.equipped, karate, belt: BELTS[G.w], t, punch: karate ? Math.max(0, Math.sin((t - 1.8) * 6)) * 0.6 : 0,
   });
   ctx.restore();
   if (t > 1.75 && t < 2.05) { ctx.fillStyle = `rgba(255,255,255,${1 - (t - 1.75) / 0.3})`; ctx.fillRect(0, 0, cv.width, cv.height); }
@@ -1362,7 +1377,7 @@ function drawBattle(dt) {
   if (B.meHurt > 0 && Math.floor(t * 20) % 2) x1.globalAlpha = 0.4;
   const lunge = Math.sin(B.meLunge * Math.PI);
   drawHamster(x1, 115 + lunge * 60, 120, 150, {
-    color: S.color, equipped: S.equipped, karate: true, belt: B.boss ? BELTS[G.w] : currentBelt(), t, bob: true,
+    color: S.color, mood: S.mood, equipped: S.equipped, karate: true, belt: B.boss ? BELTS[G.w] : currentBelt(), t, bob: true,
     blink: (t % 3.5) < 0.12, punch: lunge, tilt: lunge * 0.15,
   });
   x1.restore();
@@ -1543,7 +1558,7 @@ function render(dt) {
   }
   // hamster
   drawHamster(ctx, (hx + 0.5) * T, (hy + 0.5) * T + T * 0.04, T * 0.9, {
-    color: S.color, equipped: S.equipped, t: G.t, bob: h.moving || h.digging, tilt: h.tilt,
+    color: S.color, mood: S.mood, equipped: S.equipped, t: G.t, bob: h.moving || h.digging, tilt: h.tilt,
     blink: (G.t % 4) < 0.13, shadow: false, punch: h.digging ? Math.abs(Math.sin(G.t * 20)) * 0.5 : 0,
   });
   // particles
@@ -1652,9 +1667,9 @@ function frame(now) {
   try {
     if (curScreen === 'game' && G) { update(dt); render(dt); }
     else if (curScreen === 'auth') drawPreview('#cvAuth', { color: AUTH_COLORS[Math.floor(gTime / 1.5) % AUTH_COLORS.length], equipped: {} }, 130);
-    else if (curScreen === 'color') drawPreview('#cvColor', { color: pickColor }, 170);
-    else if (curScreen === 'menu' && S) drawPreview('#cvMenu', { color: S.color, equipped: S.equipped, tilt: Math.sin(gTime * 2) * 0.06 }, 170);
-    else if (curScreen === 'dress' && S) drawPreview('#cvDress', { color: S.color, equipped: S.equipped, karate: $('#dressKarate').checked, belt: BELTS[Math.max(0, S.beaten.lastIndexOf(true))] }, 180);
+    else if (curScreen === 'color') drawPreview('#cvColor', { color: pickColor, mood: pickMood }, 170);
+    else if (curScreen === 'menu' && S) drawPreview('#cvMenu', { color: S.color, mood: S.mood, equipped: S.equipped, tilt: Math.sin(gTime * 2) * 0.06 }, 170);
+    else if (curScreen === 'dress' && S) drawPreview('#cvDress', { color: S.color, mood: S.mood, equipped: S.equipped, karate: $('#dressKarate').checked, belt: BELTS[Math.max(0, S.beaten.lastIndexOf(true))] }, 180);
     if (B && battleOpen()) drawBattle(dt);
     if (TF) drawTf(dt);
   } catch (err) { console.error(err); }

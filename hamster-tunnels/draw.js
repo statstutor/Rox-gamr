@@ -310,26 +310,7 @@ function drawHamster(ctx, x, y, size, o = {}) {
   // cheeks
   ctx.fillStyle = pika ? '#e8412f' : 'rgba(240,140,140,0.55)';
   for (const sx of [-1, 1]) { circ(ctx, sx * 0.55, -0.1, pika ? 0.15 : 0.17); ctx.fill(); }
-  // eyes
-  for (const sx of [-1, 1]) {
-    const ex = sx * 0.36, ey = -0.32;
-    if (o.blink) {
-      ctx.beginPath(); ctx.moveTo(ex - 0.1, ey); ctx.quadraticCurveTo(ex, ey + 0.07, ex + 0.1, ey);
-      ctx.strokeStyle = HAM_LINE; ctx.lineWidth = 0.045; ctx.stroke();
-    } else {
-      circ(ctx, ex, ey, 0.115); ctx.fillStyle = '#5a1414'; ctx.fill();
-      circ(ctx, ex + 0.035, ey - 0.04, 0.042); ctx.fillStyle = '#fff'; ctx.fill();
-    }
-  }
-  if (o.karate) {
-    ctx.strokeStyle = HAM_LINE; ctx.lineWidth = 0.05;
-    for (const sx of [-1, 1]) { ctx.beginPath(); ctx.moveTo(sx * 0.5, -0.52); ctx.lineTo(sx * 0.24, -0.47); ctx.stroke(); }
-  }
-  // nose + mouth
-  ell(ctx, 0, -0.25, 0.045, 0.032); ctx.fillStyle = '#ef8f8f'; ctx.fill();
-  ctx.strokeStyle = HAM_LINE; ctx.lineWidth = 0.028;
-  ctx.beginPath(); ctx.arc(-0.045, -0.2, 0.045, 0.1 * Math.PI, 0.95 * Math.PI); ctx.stroke();
-  ctx.beginPath(); ctx.arc(0.045, -0.2, 0.045, 0.05 * Math.PI, 0.9 * Math.PI); ctx.stroke();
+  drawFace(ctx, o.mood || 'happy', o.blink, o.karate, t);
   // whiskers
   ctx.lineWidth = 0.022;
   for (const sx of [-1, 1]) {
@@ -365,6 +346,105 @@ function drawHamster(ctx, x, y, size, o = {}) {
     drawHeadband(ctx);
   }
   ctx.restore();
+}
+
+// ---------- faces / moods ----------
+// Eyes sit at (±0.36, -0.32), nose at (0, -0.25), mouth just below.
+function drawFace(ctx, mood, blink, karate, t) {
+  const EY = -0.32, dark = '#5a1414';
+  const line = (w = 0.04) => { ctx.strokeStyle = HAM_LINE; ctx.lineWidth = w; };
+  const dotEye = (ex, r = 0.115, lx = 0, ly = 0, shine = 0.042) => {
+    circ(ctx, ex + lx, EY + ly, r); ctx.fillStyle = dark; ctx.fill();
+    circ(ctx, ex + lx + r * 0.3, EY + ly - r * 0.35, shine); ctx.fillStyle = '#fff'; ctx.fill();
+  };
+  const closedDown = ex => { line(0.045); ctx.beginPath(); ctx.moveTo(ex - 0.1, EY); ctx.quadraticCurveTo(ex, EY + 0.07, ex + 0.1, EY); ctx.stroke(); };
+  const closedUp = ex => { line(0.05); ctx.beginPath(); ctx.moveTo(ex - 0.11, EY + 0.04); ctx.quadraticCurveTo(ex, EY - 0.1, ex + 0.11, EY + 0.04); ctx.stroke(); };
+  const heart = (ex, sz) => {
+    ctx.save(); ctx.translate(ex, EY + 0.02); ctx.scale(sz, sz);
+    ctx.beginPath(); ctx.moveTo(0, 0.08); ctx.bezierCurveTo(-0.16, -0.04, -0.09, -0.16, 0, -0.07); ctx.bezierCurveTo(0.09, -0.16, 0.16, -0.04, 0, 0.08);
+    ctx.fillStyle = '#e8435f'; ctx.fill(); ctx.restore();
+  };
+  const brows = (inner, outer) => { line(0.045); for (const sx of [-1, 1]) { ctx.beginPath(); ctx.moveTo(sx * 0.5, outer); ctx.lineTo(sx * 0.24, inner); ctx.stroke(); } };
+  const wMouth = () => {
+    line(0.028);
+    ctx.beginPath(); ctx.arc(-0.045, -0.2, 0.045, 0.1 * Math.PI, 0.95 * Math.PI); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0.045, -0.2, 0.045, 0.05 * Math.PI, 0.9 * Math.PI); ctx.stroke();
+  };
+  const openMouth = (w = 0.1, h = 0.14) => {
+    ctx.beginPath(); ctx.moveTo(-w, -0.2); ctx.quadraticCurveTo(0, -0.2 + h * 1.6, w, -0.2); ctx.closePath();
+    ctx.fillStyle = '#8a2b2b'; ctx.fill(); line(0.028); ctx.stroke();
+    ctx.save(); ctx.clip(); ell(ctx, 0, -0.2 + h * 0.75, w * 0.6, h * 0.35); ctx.fillStyle = '#f08a96'; ctx.fill(); ctx.restore();
+  };
+  const frown = (y = -0.12, r = 0.06) => { line(0.03); ctx.beginPath(); ctx.arc(0, y, r, 1.15 * Math.PI, 1.85 * Math.PI); ctx.stroke(); };
+
+  // eyes
+  switch (mood) {
+    case 'joy': [-0.36, 0.36].forEach(closedUp); break;
+    case 'love': [-0.36, 0.36].forEach(ex => heart(ex, 1.25 + Math.sin(t * 6) * 0.08)); break;
+    case 'star':
+      for (const ex of [-0.36, 0.36]) { ctx.fillStyle = '#ffc928'; drawStar(ctx, ex, EY, 0.15); line(0.02); ctx.stroke(); }
+      break;
+    case 'surprised': if (blink) [-0.36, 0.36].forEach(closedDown); else [-0.36, 0.36].forEach(ex => dotEye(ex, 0.14, 0, 0, 0.05)); break;
+    case 'silly': closedUp(-0.36); if (blink) closedDown(0.36); else dotEye(0.36); break;
+    case 'sleepy': [-0.36, 0.36].forEach(closedDown); break;
+    case 'smug':
+      for (const ex of [-0.36, 0.36]) {
+        ctx.beginPath(); ctx.arc(ex, EY, 0.115, 0, Math.PI); ctx.closePath(); ctx.fillStyle = dark; ctx.fill();
+        circ(ctx, ex + 0.04, EY + 0.04, 0.03); ctx.fillStyle = '#fff'; ctx.fill();
+        line(0.05); ctx.beginPath(); ctx.moveTo(ex - 0.13, EY); ctx.lineTo(ex + 0.13, EY); ctx.stroke();
+      }
+      break;
+    case 'shy': if (blink) [-0.36, 0.36].forEach(closedDown); else [-0.36, 0.36].forEach(ex => dotEye(ex, 0.1, 0.04, 0.02)); break;
+    case 'sad':
+      if (blink) [-0.36, 0.36].forEach(closedDown);
+      else [-0.36, 0.36].forEach(ex => { dotEye(ex, 0.125, 0, 0, 0.05); circ(ctx, ex - 0.04, EY + 0.05, 0.022); ctx.fillStyle = '#fff'; ctx.fill(); });
+      break;
+    default: if (blink) [-0.36, 0.36].forEach(closedDown); else [-0.36, 0.36].forEach(ex => dotEye(ex));
+  }
+  // brows
+  if (mood === 'grumpy') brows(-0.44, -0.54);
+  else if (mood === 'sad') brows(-0.54, -0.47);
+  else if (karate) brows(-0.47, -0.52);
+
+  // nose
+  ell(ctx, 0, -0.25, 0.045, 0.032); ctx.fillStyle = '#ef8f8f'; ctx.fill();
+  // mouth
+  switch (mood) {
+    case 'joy': case 'star': openMouth(); break;
+    case 'love': openMouth(0.08, 0.1); break;
+    case 'surprised': ell(ctx, 0, -0.14, 0.045, 0.06); ctx.fillStyle = '#8a2b2b'; ctx.fill(); line(0.025); ctx.stroke(); break;
+    case 'silly':
+      wMouth();
+      ctx.beginPath(); ctx.moveTo(-0.05, -0.17); ctx.lineTo(-0.05, -0.1); ctx.arc(0, -0.1, 0.05, Math.PI, 0, true); ctx.lineTo(0.05, -0.17); ctx.closePath();
+      ctx.fillStyle = '#f08a96'; ctx.fill(); line(0.025); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, -0.16); ctx.lineTo(0, -0.1); ctx.stroke();
+      break;
+    case 'smug': line(0.03); ctx.beginPath(); ctx.moveTo(-0.07, -0.18); ctx.quadraticCurveTo(0.03, -0.14, 0.1, -0.21); ctx.stroke(); break;
+    case 'sleepy':
+      line(0.028); ctx.beginPath(); ctx.moveTo(-0.04, -0.17); ctx.lineTo(0.04, -0.17); ctx.stroke();
+      // floating Zzz
+      line(0.03);
+      [[0.62, -0.95, 0.1, 0], [0.82, -1.18, 0.075, 1.2]].forEach(([zx, zy, zs, ph]) => {
+        const by = Math.sin(t * 2 + ph) * 0.04;
+        ctx.beginPath(); ctx.moveTo(zx - zs, zy - zs + by); ctx.lineTo(zx + zs, zy - zs + by); ctx.lineTo(zx - zs, zy + zs + by); ctx.lineTo(zx + zs, zy + zs + by); ctx.stroke();
+      });
+      break;
+    case 'shy':
+      line(0.026); ctx.beginPath(); ctx.moveTo(-0.08, -0.17);
+      for (let i = 1; i <= 4; i++) ctx.lineTo(-0.08 + i * 0.04, i % 2 ? -0.2 : -0.17);
+      ctx.stroke();
+      // extra blush hatching
+      ctx.strokeStyle = 'rgba(220,70,90,0.7)'; ctx.lineWidth = 0.02;
+      for (const sx of [-1, 1]) for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(sx * 0.55 + i * 0.06 - 0.02, -0.05); ctx.lineTo(sx * 0.55 + i * 0.06 + 0.02, -0.15); ctx.stroke(); }
+      break;
+    case 'sad':
+      frown(-0.11, 0.055);
+      { const ty = -0.2 + ((t * 0.6) % 1) * 0.12; ctx.beginPath(); ctx.moveTo(0.3, ty - 0.06); ctx.quadraticCurveTo(0.36, ty + 0.03, 0.3, ty + 0.04); ctx.quadraticCurveTo(0.24, ty + 0.03, 0.3, ty - 0.06);
+        ctx.fillStyle = '#8fd0ff'; ctx.fill(); }
+      break;
+    case 'grumpy': frown(-0.1, 0.065); break;
+    default: wMouth();
+  }
 }
 
 // drawn while clipped to the body

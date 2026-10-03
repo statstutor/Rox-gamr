@@ -16,6 +16,21 @@ const HAM_COLORS = {
   pikachu: { name: 'Pikachu', body: '#f6c21b', belly: '#ffdc3a', secret: true },
 };
 
+// Moods (faces) the player can pick, like fur colours
+const MOODS = {
+  happy: { name: 'Happy', icon: '😊' },
+  joy: { name: 'Joyful', icon: '😄' },
+  love: { name: 'In Love', icon: '😍' },
+  star: { name: 'Starstruck', icon: '🤩' },
+  surprised: { name: 'Surprised', icon: '😮' },
+  silly: { name: 'Silly', icon: '😜' },
+  smug: { name: 'Smug', icon: '😏' },
+  shy: { name: 'Shy', icon: '😳' },
+  sleepy: { name: 'Sleepy', icon: '😴' },
+  sad: { name: 'Sad', icon: '🥺' },
+  grumpy: { name: 'Grumpy', icon: '😠' },
+};
+
 const ACCESSORIES = {
   leafhat: { name: 'Leaf Hat', slot: 'head', icon: '🍃' },
   flowercrown: { name: 'Flower Crown', slot: 'head', icon: '🌼' },
