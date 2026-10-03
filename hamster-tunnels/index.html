@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Hamster Tunnels</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ===== Login / Sign up ===== -->
+  <section id="scr-auth" class="screen active">
+    <div class="clouds"></div>
+    <div class="card auth-card">
+      <canvas id="cvAuth" width="200" height="180"></canvas>
+      <h1 class="logo">Hamster <span>Tunnels</span></h1>
+      <div class="tabs">
+        <button type="button" class="tab active" data-tab="login">Log In</button>
+        <button type="button" class="tab" data-tab="signup">New Account</button>
+      </div>
+      <form id="authForm" autocomplete="on">
+        <input id="authUser" placeholder="Username" maxlength="16" autocomplete="username" required>
+        <input id="authPass" type="password" placeholder="Password" autocomplete="current-password" required>
+        <input id="authPass2" type="password" placeholder="Type password again" autocomplete="new-password" class="signup-only">
+        <div id="authMsg" class="msg"></div>
+        <button class="btn big" type="submit" id="authBtn">Log In</button>
+      </form>
+      <p class="tiny">Accounts are saved on this device, in this browser.</p>
+    </div>
+  </section>
+
+  <!-- ===== Pick a colour ===== -->
+  <section id="scr-color" class="screen">
+    <div class="card">
+      <h2>Choose your hamster!</h2>
+      <canvas id="cvColor" width="240" height="220"></canvas>
+      <div id="colorName" class="subtitle"></div>
+      <div id="colorSwatches" class="swatches"></div>
+      <button class="btn big" id="colorDone">That's me! ➜</button>
+    </div>
+  </section>
+
+  <!-- ===== Main menu ===== -->
+  <section id="scr-menu" class="screen">
+    <div class="clouds"></div>
+    <div class="menu-wrap">
+      <h1 class="logo big">Hamster <span>Tunnels</span></h1>
+      <div class="menu-row">
+        <div class="menu-ham">
+          <canvas id="cvMenu" width="260" height="240"></canvas>
+          <div id="menuHello" class="subtitle"></div>
+        </div>
+        <div class="menu-buttons">
+          <button class="btn big start" id="btnStart">▶ Start</button>
+          <button class="btn" id="btnDress">🎀 Dress Up</button>
+          <button class="btn" id="btnWorlds">🗺️ Worlds</button>
+          <button class="btn" id="btnSkills">⭐ Skills &amp; Level</button>
+          <button class="btn" id="btnJournal">📖 Mystery Journal</button>
+          <button class="btn ghost" id="btnLogout">🚪 Log Out</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== How to play ===== -->
+  <section id="scr-help" class="screen">
+    <div class="card help-card">
+      <h2>How to Play</h2>
+      <div id="helpSteps" class="help-steps"></div>
+      <button class="btn big start" id="helpGo">Let's Dig! ⛏️</button>
+    </div>
+  </section>
+
+  <!-- ===== Dress up ===== -->
+  <section id="scr-dress" class="screen">
+    <div class="card wide">
+      <div class="head-row"><button class="btn small ghost back">⬅ Back</button><h2>Dress Up</h2><span></span></div>
+      <div class="dress-row">
+        <div class="dress-preview">
+          <canvas id="cvDress" width="260" height="260"></canvas>
+          <label class="check"><input type="checkbox" id="dressKarate"> Preview karate look 🥋</label>
+        </div>
+        <div class="dress-options">
+          <h3>Fur color</h3>
+          <div id="dressColors" class="swatches small"></div>
+          <h3>Accessories <small id="accCount"></small></h3>
+          <div id="dressTabs" class="tabs"></div>
+          <div id="dressItems" class="acc-grid"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Worlds ===== -->
+  <section id="scr-worlds" class="screen">
+    <div class="card wide">
+      <div class="head-row"><button class="btn small ghost back">⬅ Back</button><h2>Worlds</h2><span></span></div>
+      <div id="worldCards" class="world-cards"></div>
+    </div>
+  </section>
+
+  <!-- ===== Skills ===== -->
+  <section id="scr-skills" class="screen">
+    <div class="card wide">
+      <div class="head-row"><button class="btn small ghost back">⬅ Back</button><h2>Skills &amp; Level</h2><span></span></div>
+      <div id="skillsBody"></div>
+    </div>
+  </section>
+
+  <!-- ===== Journal ===== -->
+  <section id="scr-journal" class="screen">
+    <div class="card wide">
+      <div class="head-row"><button class="btn small ghost back">⬅ Back</button><h2>📖 Mystery Journal</h2><span></span></div>
+      <div id="journalBody"></div>
+    </div>
+  </section>
+
+  <!-- ===== Game ===== -->
+  <section id="scr-game" class="screen">
+    <canvas id="cvGame"></canvas>
+    <div class="hud">
+      <div class="hud-left panel">
+        <div class="hud-name"><b id="hudName"></b> <span class="lv">Lv <span id="hudLv"></span></span></div>
+        <div class="bar hp"><i id="hudHp"></i><span id="hudHpTxt"></span></div>
+        <div class="bar xp"><i id="hudXp"></i><span id="hudXpTxt"></span></div>
+        <div class="hud-small"><span id="hudWorld"></span> · <span id="hudDepth"></span></div>
+      </div>
+      <div class="hud-tasks panel">
+        <div class="task-head"><b id="taskTitle">Tasks</b></div>
+        <ul id="taskList"></ul>
+      </div>
+      <div class="hud-buttons">
+        <button class="hbtn" id="hbMenu" title="Menu (Esc)">⏸️</button>
+        <button class="hbtn" id="hbSniff" title="Sniff for tasks (F)">👃</button>
+        <button class="hbtn" id="hbSnack" title="Eat a snack (E)">🍓<b id="hudSnacks">0</b></button>
+        <button class="hbtn" id="hbJournal" title="Journal (J)">📖</button>
+        <button class="hbtn" id="hbWorlds" title="Travel">🗺️</button>
+      </div>
+    </div>
+    <div class="dpad" id="dpad">
+      <button data-d="up">▲</button><button data-d="left">◀</button><button data-d="down">▼</button><button data-d="right">▶</button>
+    </div>
+  </section>
+
+  <!-- ===== Battle ===== -->
+  <div id="battle" class="overlay hidden">
+    <div class="battle-box">
+      <div class="arena">
+        <div class="fighter me">
+          <div class="nameplate"><b id="bMeName"></b> <span class="lv">Lv <span id="bMeLv"></span></span>
+            <div class="bar hp"><i id="bMeHp"></i><span id="bMeHpTxt"></span></div>
+            <div class="bar pep"><i id="bMePep"></i><span id="bMePepTxt"></span></div>
+          </div>
+          <canvas id="cvBMe" width="240" height="220"></canvas>
+        </div>
+        <div class="vs">VS</div>
+        <div class="fighter foe">
+          <div class="nameplate"><b id="bFoeName"></b>
+            <div class="bar hp foe"><i id="bFoeHp"></i><span id="bFoeHpTxt"></span></div>
+            <div id="bFoeStatus" class="status"></div>
+          </div>
+          <canvas id="cvBFoe" width="240" height="220"></canvas>
+        </div>
+      </div>
+      <div id="bLog" class="blog"></div>
+      <div id="bMeter" class="meter hidden">
+        <div class="zone ok"></div><div class="zone good"></div><div class="zone perfect"></div>
+        <div class="needle" id="bNeedle"></div>
+        <span class="meter-txt">Tap or press SPACE when the line is in the middle!</span>
+      </div>
+      <div id="bActions" class="actions"></div>
+    </div>
+  </div>
+
+  <!-- ===== Transform cutscene ===== -->
+  <div id="transform" class="overlay hidden">
+    <canvas id="cvTf" width="420" height="380"></canvas>
+    <div class="tf-text" id="tfText"></div>
+  </div>
+
+  <!-- ===== Generic modal ===== -->
+  <div id="modal" class="overlay hidden">
+    <div class="card modal-card">
+      <div id="mIcon" class="m-icon"></div>
+      <h2 id="mTitle"></h2>
+      <div id="mBody"></div>
+      <div id="mBtns" class="m-btns"></div>
+    </div>
+  </div>
+
+  <div id="toasts"></div>
+  <button id="musicBtn" class="music-fab" title="Music on/off">🎵</button>
+</div>
+
+<script src="audio.js"></script>
+<script src="data.js"></script>
+<script src="draw.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
