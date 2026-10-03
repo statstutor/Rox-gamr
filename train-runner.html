@@ -185,7 +185,11 @@
     carsSinceGap++;
     let gapAfter = COUPLER;
     if (kind !== "train") {
-      gapAfter = jumpGap();                                   // rock ends at a ravine, forest at a lake
+      gapAfter = 0;                                           // ground usually runs on unbroken...
+      if (carsSinceGap >= 3 && (Math.random() < 0.4 || carsSinceGap >= 5)) {
+        carsSinceGap = 0;                                     // ...until a ravine (rock) or lake (forest)
+        gapAfter = jumpGap();
+      }
     } else if (worldAt(x + w) + COUPLER >= ROCK_AT) {
       gapAfter = jumpGap();                                   // end of the train: leap onto the rocks
     } else if (carsSinceGap >= 2 && (Math.random() < 0.5 || carsSinceGap >= 4)) {
@@ -193,6 +197,7 @@
       gapAfter = jumpGap();
     }
     const car = makeCar(x, w, gapAfter, kind);
+    car.gapBefore = last.gapAfter;
     cars.push(car);
 
     // Obstacles on the roof, spaced so there's always time to react
@@ -210,7 +215,7 @@
   function addObstacle(x, maxEnd, kind) {
     let o;
     if (kind === "rock") {
-      if (Math.random() < 0.28) {
+      if (Math.random() < 0.45) {
         const w = rand(90, 150), n = Math.max(3, Math.round(w / 22));
         o = { type: "high", variant: "overhang", x, w, teeth: Array.from({ length: n }, (_, i) => i % 2 ? rand(10, 22) : rand(0, 4)) };
       } else {
@@ -219,7 +224,7 @@
         o = { type: "low", variant, x, w: size[0], h: size[1] };
       }
     } else if (kind === "forest") {
-      if (Math.random() < 0.22) {
+      if (Math.random() < 0.5) {
         const w = rand(90, 140), leaves = [];
         for (let fy = 0; fy <= 1.001; fy += 0.08) {
           const n = Math.round(w / 22) + (fy > 0.9 ? 2 : 0);
@@ -231,7 +236,7 @@
         const size = { log: [Math.round(rand(60, 100)), 30], fox: [56, 34], rabbit: [32, 26], deer: [62, 74] }[variant];
         o = { type: "low", variant, x, w: size[0], h: size[1] };
       }
-    } else if (Math.random() < 0.42) {
+    } else if (Math.random() < 0.55) {
       const variant = Math.random() < 0.5 ? "bridge" : "sign";
       o = { type: "high", variant, x, w: variant === "bridge" ? rand(90, 150) : rand(76, 100) };
     } else {
@@ -508,8 +513,9 @@
     ctx.moveTo(x, ROOF);
     for (const [bx, bh] of c.bumps) ctx.lineTo(x + bx, ROOF - bh);
     ctx.lineTo(x + w, ROOF);
-    c.jagR.forEach((j, i) => ctx.lineTo(x + w - j, ROOF + (i + 1) * step));
-    for (let i = c.jagL.length - 1; i >= 0; i--) ctx.lineTo(x + c.jagL[i], ROOF + (i + 1) * step);
+    const jr = c.gapAfter > 0, jl = c.gapBefore !== 0;
+    c.jagR.forEach((j, i) => ctx.lineTo(x + w - (jr ? j : -1), ROOF + (i + 1) * step));
+    for (let i = c.jagL.length - 1; i >= 0; i--) ctx.lineTo(x + (jl ? c.jagL[i] : -1), ROOF + (i + 1) * step);
     ctx.closePath();
   }
 
