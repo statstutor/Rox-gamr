@@ -282,3 +282,8 @@ input:focus { border-color: var(--pink); }
 .mood { background: #fff; border: 3px solid var(--line); border-radius: 14px; padding: 4px 2px; cursor: pointer; font-size: .72rem; font-weight: 600; text-align: center; }
 .mood .ic { display: block; font-size: 1.4rem; line-height: 1.2; }
 .mood.sel { border-color: var(--pink); background: #ffeef6; }
+
+/* earthquake: the HUD shakes along with the camera */
+.quaking .hud { animation: quake .12s infinite; }
+@keyframes quake { 0% { transform: translate(0, 0); } 25% { transform: translate(-4px, 2px); } 50% { transform: translate(3px, -3px); } 75% { transform: translate(-2px, -1px); } 100% { transform: translate(2px, 3px); } }
+@media (prefers-reduced-motion: reduce) { .quaking .hud { animation: none; } }

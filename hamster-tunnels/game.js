@@ -93,6 +93,7 @@ function show(id) {
   $$('.screen').forEach(s => s.classList.toggle('active', s.id === 'scr-' + id));
   curScreen = id;
   keys.length = 0;
+  if (id !== 'game') { Sound.rumble(0, 0.4); $('#scr-game').classList.remove('quaking'); if (G && G.quake) G.quake = null; }
   if (id !== 'game' && returnTo !== 'game') Sound.play('menu');
   if (id === 'menu') { returnTo = null; G = null; renderMenu(); }
   if (id === 'dress') renderDress();
@@ -362,11 +363,13 @@ function renderJournal() {
 // ================= modal + toast =================
 const modalQ = [];
 let modalOpen = false;
+let modalHoldUntil = 0; // the next queued popup waits until this time (used by earthquakes)
 function showModal(o) { modalQ.push(o); if (!modalOpen) nextModal(); }
 function nextModal() {
   const o = modalQ.shift();
   if (!o) { modalOpen = false; $('#modal').classList.add('hidden'); return; }
   modalOpen = true; keys.length = 0;
+  if (o.onShow) o.onShow();
   $('#mIcon').textContent = o.icon || '';
   $('#mTitle').textContent = o.title || '';
   const body = $('#mBody');
@@ -381,7 +384,10 @@ function nextModal() {
   const close = fn => {
     $('#modal').classList.add('hidden'); modalOpen = false;
     if (fn) fn();
-    if (!modalOpen) nextModal();
+    if (modalOpen) return;
+    const wait = modalHoldUntil - Date.now();
+    if (wait > 0 && modalQ.length) setTimeout(() => { if (!modalOpen) nextModal(); }, wait);
+    else nextModal();
   };
   if (o.choices) {
     const wrap = document.createElement('div'); wrap.className = 'choices';
@@ -423,6 +429,8 @@ const DECOR = [
 function enterWorld(w) {
   if (!S || w >= S.unlocked) return;
   S.current = w; returnTo = null;
+  Sound.rumble(0, 0.3);
+  $('#scr-game').classList.remove('quaking');
   G = makeGame(w);
   if (S.hp == null || S.hp <= 0) S.hp = maxHp();
   show('game');
@@ -497,8 +505,7 @@ function freeSpot(minD, maxD) {
     const x = randi(1, G.W - 2), y = randi(5, G.H - 3);
     const d = Math.abs(x - h.x) + Math.abs(y - h.y);
     if (i < 450 && (d < minD || d > maxD)) continue;
-    const t = tileAt(x, y);
-    if (t === STONE || t === SKY) continue;
+    if (tileAt(x, y) !== DIRT) continue; // new things are always buried
     if (G.objs.has(y * G.W + x) || crAt(x, y) || (x === h.x && y === h.y)) continue;
     return { x, y };
   }
@@ -738,6 +745,7 @@ function sniff() {
 function update(dt) {
   G.t += dt;
   updateParticles(dt);
+  if (G.quake) updateQuake(dt);
   if (G.sniffCd > 0) { G.sniffCd -= dt; $('#hbSniff').classList.toggle('cool', G.sniffCd > 0); }
   if (G.sniff) { G.sniff.t -= dt; if (G.sniff.t <= 0) G.sniff = null; }
   if (G.bumpCd > 0) G.bumpCd -= dt;
@@ -845,6 +853,67 @@ function updateCreatures(dt) {
   }
 }
 
+// ---------- earthquakes ----------
+// After reading a clue the ground shakes and some big patches of dirt fall back into your tunnels.
+// Most of what you dug stays open, and the hamster's own spot is never buried.
+function startQuake() {
+  if (!G) return;
+  const h = G.ham, dur = 2.8;
+  const near = (x, y) => Math.abs(x - h.x) <= 1 && Math.abs(y - h.y) <= 1;
+  const open = [];
+  for (let y = HOME.y + 1; y < G.H - 1; y++) for (let x = 1; x < G.W - 1; x++) {
+    if (G.map[y * G.W + x] === OPEN && !near(x, y)) open.push([x, y]);
+  }
+  const chosen = new Set();
+  const budget = Math.floor(open.length * 0.25);
+  const patches = clamp(Math.round(open.length / 14), 1, 5);
+  for (let p = 0; p < patches && open.length && chosen.size < budget; p++) {
+    const size = randi(3, 7);
+    const queue = [pick(open)];
+    let n = 0;
+    while (queue.length && n < size && chosen.size < budget) {
+      const [x, y] = queue.shift();
+      const k = y * G.W + x;
+      if (chosen.has(k) || G.map[k] !== OPEN || near(x, y) || y <= HOME.y) continue;
+      chosen.add(k); n++;
+      shuffle([[1, 0], [-1, 0], [0, 1], [0, -1]]).forEach(([dx, dy]) => queue.push([x + dx, y + dy]));
+    }
+  }
+  G.quake = { t: 0, dur, falls: [...chosen].map(k => ({ k, at: rand(0.3, dur - 0.4), done: false })), dustT: 0 };
+  modalHoldUntil = Date.now() + dur * 1000;
+  Sound.rumble(1, 0.25);
+  $('#scr-game').classList.add('quaking');
+  toast('💥 EARTHQUAKE! Dirt is falling into the tunnels!');
+}
+function updateQuake(dt) {
+  const q = G.quake, h = G.ham, T = G.T;
+  q.t += dt;
+  for (const f of q.falls) {
+    if (f.done || q.t < f.at) continue;
+    f.done = true;
+    const x = f.k % G.W, y = Math.floor(f.k / G.W);
+    if ((x === h.x && y === h.y) || (x === h.tx && y === h.ty)) continue; // never bury the hamster
+    if (G.map[f.k] !== OPEN) continue;
+    G.map[f.k] = DIRT;
+    dirtBits(x, y, 8);
+    if (Math.random() < 0.5) Sound.sfx('thud');
+  }
+  // dust and pebbles raining down in the tunnels you can see
+  q.dustT += dt;
+  while (q.dustT > 0.02) {
+    q.dustT -= 0.02;
+    const x = randi(Math.floor(G.cam.x / T), Math.ceil((G.cam.x + G.cw) / T));
+    const y = randi(Math.max(HOME.y, Math.floor(G.cam.y / T)), Math.ceil((G.cam.y + G.ch) / T));
+    if (!seenOpen(x, y)) continue;
+    G.parts.push({ x: (x + rand(0.1, 0.9)) * T, y: y * T + 2, vx: rand(-15, 15), vy: rand(20, 80), life: rand(0.4, 0.8), col: pick(G.wd.c.dirt), r: rand(1.5, 4) });
+  }
+  if (q.t >= q.dur) {
+    G.quake = null;
+    Sound.rumble(0, 1.6);
+    $('#scr-game').classList.remove('quaking');
+  }
+}
+
 // ---------- objects & creatures ----------
 function touchObj(o, k) {
   const wd = G.wd;
@@ -873,7 +942,8 @@ function touchObj(o, k) {
         showModal({
           icon: '📜', title: `Mystery Clue #${ws.clues}`,
           body: `<p><i>${m.title}</i></p><div class="speech">${esc(m.clues[ws.clues - 1])}</div><p class="tiny">Saved in your 📖 Mystery Journal.</p>`,
-          buttons: [{ label: 'Hmm, interesting... 🔍' }],
+          onShow: () => Sound.rumble(0.3, 1.2),
+          buttons: [{ label: 'Hmm, interesting... 🔍', onClick: startQuake }],
         });
       }
       gainXP(8 * (G.w + 1));
@@ -1466,7 +1536,11 @@ function render(dt) {
   if (!G.cam) G.cam = { x: tx, y: ty };
   G.cam.x += (tx - G.cam.x) * Math.min(1, dt * 8);
   G.cam.y += (ty - G.cam.y) * Math.min(1, dt * 8);
-  const cx = Math.round(G.cam.x), cy = Math.round(G.cam.y);
+  let cx = Math.round(G.cam.x), cy = Math.round(G.cam.y);
+  if (G.quake) {
+    const amp = 4 + 10 * Math.max(0, 1 - G.quake.t / G.quake.dur);
+    cx += Math.round(rand(-amp, amp)); cy += Math.round(rand(-amp, amp));
+  }
 
   ctx.fillStyle = c.tunnel; ctx.fillRect(0, 0, cw, ch);
   ctx.save(); ctx.translate(-cx, -cy);
@@ -1544,7 +1618,7 @@ function render(dt) {
   for (const cr of G.cr) {
     cr.px += (cr.x - cr.px) * Math.min(1, dt * 10); cr.py += (cr.y - cr.py) * Math.min(1, dt * 10);
     if (cr.x < x0 - 1 || cr.x > x1 + 1 || cr.y < y0 - 1 || cr.y > y1 + 1) continue;
-    if (!isSeen(cr.x, cr.y)) continue;
+    if (!seenOpen(cr.x, cr.y)) continue; // buried creatures stay hidden
     const px = (cr.px + 0.5) * T, py = (cr.py + 0.5) * T + Math.sin(G.t * 5 + cr.x) * 2;
     ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(px, (cr.py + 0.88) * T, T * 0.28, T * 0.07, 0, 0, 7); ctx.fill();
     if (cr.role === 'mystery') ctx.filter = 'grayscale(1) brightness(0.8)';

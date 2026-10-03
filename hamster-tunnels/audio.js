@@ -341,6 +341,7 @@ const Sound = (() => {
     if (!ctx) return;
     const t = ctx.currentTime + 0.005;
     switch (name) {
+      case 'thud': noise(t, 0.25, 'lowpass', 400, 0.6, sfxBus); drum('kick', t, sfxBus); break;
       case 'dig': noise(t, 0.09, 'lowpass', 700 + Math.random() * 400, 0.25, sfxBus); break;
       case 'bump': voice('tri', 40, 0.06, t, 0.25, sfxBus); break;
       case 'pickup': seq([79, 84], 'square', 0.07, 0.12); break;
@@ -389,10 +390,40 @@ const Sound = (() => {
     }
   }
 
+  // Continuous low earthquake rumble. rumble(vol, rampSeconds); vol 0 fades it out and stops it.
+  let rumbleNodes = null;
+  function rumble(vol, ramp = 0.4) {
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    if (!rumbleNodes) {
+      if (vol <= 0) return;
+      const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 140; lp.Q.value = 1.5;
+      const g = ctx.createGain(); g.gain.value = 0.0001;
+      const wob = ctx.createGain(); wob.gain.value = 1;
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 3.5;
+      const lfoAmt = ctx.createGain(); lfoAmt.gain.value = 0.35;
+      lfo.connect(lfoAmt); lfoAmt.connect(wob.gain);
+      const sub = ctx.createOscillator(); sub.type = 'sine'; sub.frequency.value = 38;
+      const subG = ctx.createGain(); subG.gain.value = 0.25;
+      src.connect(lp); lp.connect(wob); sub.connect(subG); subG.connect(wob); wob.connect(g); g.connect(sfxBus);
+      src.start(); lfo.start(); sub.start();
+      rumbleNodes = { src, lfo, sub, g };
+    }
+    const r = rumbleNodes;
+    r.g.gain.cancelScheduledValues(now);
+    r.g.gain.setValueAtTime(Math.max(0.0001, r.g.gain.value), now);
+    r.g.gain.linearRampToValueAtTime(Math.max(0.0001, vol * 1.6), now + ramp);
+    if (vol <= 0) {
+      rumbleNodes = null;
+      [r.src, r.lfo, r.sub].forEach(n => n.stop(now + ramp + 0.05));
+    }
+  }
+
   function setMusic(on) {
     musicOn = on;
     if (musicBus) musicBus.gain.setTargetAtTime(on ? 0.55 : 0, ctx.currentTime, 0.05);
   }
 
-  return { init, play, stop, sfx, setMusic, isMusicOn: () => musicOn, current: () => songName };
+  return { init, play, stop, sfx, rumble, setMusic, isMusicOn: () => musicOn, current: () => songName };
 })();
