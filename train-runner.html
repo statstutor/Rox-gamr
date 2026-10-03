@@ -1,0 +1,852 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Train Top Runner</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d0b1a; overflow: hidden; font-family: system-ui, sans-serif; color: #fff; touch-action: none; user-select: none; -webkit-user-select: none; }
+  #wrap { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  #game { position: relative; }
+  canvas { display: block; width: 100%; height: 100%; }
+  .btn { position: absolute; top: 10px; width: 44px; height: 44px; border-radius: 10px; border: 2px solid rgba(255,255,255,.6); background: rgba(0,0,0,.35); color: #fff; font-size: 20px; cursor: pointer; padding: 0; }
+  .btn:hover { background: rgba(255,255,255,.15); }
+  #pauseBtn { right: 10px; }
+  #soundBtn { right: 62px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="game">
+    <canvas id="c"></canvas>
+    <button id="soundBtn" class="btn" type="button" tabindex="-1" title="Sound (M)">🔊</button>
+    <button id="pauseBtn" class="btn" type="button" tabindex="-1" title="Pause (P / Esc)">⏸</button>
+  </div>
+</div>
+<script>
+  // ---------- Setup ----------
+  const W = 960, H = 540;          // logical game size
+  const ROOF = 360;                // y of the train car roofs (where you run)
+  const PX = 220;                  // runner's x position on screen
+  const GRAV = 2600, JUMP_V = 920;
+  const STAND_H = 64, DUCK_H = 32;
+  const CLEAR = ROOF - 46;         // bottom of overhead obstacles
+  const START_SPEED = 430, MAX_SPEED = 980, ACCEL = 11;
+  const COUPLER = 18;              // small gap between coupled cars (no jump needed)
+  const CAR_COLORS = ["#c0392b", "#16a085", "#2e5c8a", "#d4a017", "#7d3c98", "#3d6b4a", "#b8562b"];
+
+  const canvas = document.getElementById("c");
+  const ctx = canvas.getContext("2d");
+  const box = document.getElementById("game");
+  let scale = 1;
+
+  function resize() {
+    let w = innerWidth, h = innerWidth * H / W;
+    if (h > innerHeight) { h = innerHeight; w = innerHeight * W / H; }
+    box.style.width = w + "px";
+    box.style.height = h + "px";
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    scale = canvas.width / W;
+  }
+  addEventListener("resize", resize);
+  resize();
+
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function save(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+  // ---------- Game state ----------
+  let state = "title";   // title | playing | paused | over
+  let speed, scroll = 0, distance, cars, obs, particles, popups, speedLines, player;
+  let deathT, overT = 0, shake, flash, nextMilestone, carsSinceGap, carCount, deathMsg, newBest;
+  let best = +(load("trainRunnerBest") || 0);
+  const keys = { jump: false, duckKey: false };
+  const duckPointers = new Set();
+  let jumpBuffer = 0;
+  const duckHeld = () => keys.duckKey || duckPointers.size > 0;
+
+  function reset() {
+    speed = START_SPEED; distance = 0;
+    cars = []; obs = []; particles = []; popups = []; speedLines = [];
+    deathT = 0; shake = 0; flash = 0; nextMilestone = 500; carsSinceGap = 0; carCount = 0; newBest = false;
+    player = { x: PX, y: ROOF, vy: 0, vx: 0, onGround: true, duck: false, coyote: 0, phase: 0, dead: false, rot: 0, spin: 0, dustT: 0 };
+    cars.push(makeCar(-100, 1150, COUPLER));
+    while (cars[cars.length - 1].x < W + 800) spawnCar();
+  }
+
+  function makeCar(x, w, gapAfter) {
+    return { x, w, gapAfter, color: pick(CAR_COLORS), seed: Math.floor(Math.random() * 97), id: 100 + carCount++ };
+  }
+
+  function spawnCar() {
+    const last = cars[cars.length - 1];
+    const x = last.x + last.w + last.gapAfter;
+    const w = rand(520, 860);
+    carsSinceGap++;
+    let gapAfter = COUPLER;
+    // Every so often there's a real gap between cars that you must jump
+    if (carsSinceGap >= 2 && (Math.random() < 0.5 || carsSinceGap >= 4)) {
+      carsSinceGap = 0;
+      gapAfter = Math.max(120, Math.min(speed * 0.3 + rand(0, speed * 0.14), speed * 0.46));
+    }
+    const car = makeCar(x, w, gapAfter);
+    cars.push(car);
+
+    // Obstacles on the roof, spaced so there's always time to react
+    const spacing = 60 + speed * 0.85;
+    let p = x + 100 + speed * 0.45 + rand(0, 120);
+    const end = x + w - (gapAfter > COUPLER ? 80 + speed * 0.4 : 30);
+    const prev = obs[obs.length - 1];
+    if (prev) p = Math.max(p, prev.x + prev.w + spacing);
+    while (p < end - 40) {
+      if (Math.random() < 0.8) addObstacle(p, end);
+      p += spacing + rand(0, 260);
+    }
+  }
+
+  function addObstacle(x, maxEnd) {
+    let o;
+    if (Math.random() < 0.42) {
+      const variant = Math.random() < 0.5 ? "bridge" : "sign";
+      o = { type: "high", variant, x, w: variant === "bridge" ? rand(90, 150) : rand(76, 100) };
+    } else {
+      const variant = pick(["crate", "vent", "barrels", "crates2"]);
+      const size = { crate: [44, 44], vent: [62, 30], barrels: [54, 40], crates2: [46, 66] }[variant];
+      o = { type: "low", variant, x, w: size[0], h: size[1] };
+    }
+    if (x + o.w <= maxEnd) obs.push(o);
+  }
+
+  // ---------- Update ----------
+  function startGame() {
+    initAudio();
+    if (actx) actx.resume();
+    reset();
+    state = "playing";
+    startMusic();
+  }
+
+  function togglePause() {
+    if (state === "playing" && !player.dead) {
+      state = "paused";
+      if (actx) actx.suspend();
+    } else if (state === "paused") {
+      state = "playing";
+      if (actx) actx.resume();
+    }
+    pauseBtn.textContent = state === "paused" ? "▶" : "⏸";
+  }
+
+  function isSupported() {
+    return cars.some(c => c.x < player.x + 10 && c.x + c.w > player.x - 10);
+  }
+
+  function die(kind) {
+    const p = player;
+    p.dead = true; deathT = 0; shake = 14; flash = 1;
+    stopMusic();
+    if (kind === "fall") {
+      deathMsg = "You fell between the cars!";
+      p.vx = 0; p.spin = 2.5;
+      sfxFall();
+    } else {
+      deathMsg = kind === "high" ? "Clobbered by an overhead!" : "Tripped over the cargo!";
+      p.vy = -520; p.vx = -140; p.spin = -9; p.onGround = false;
+      sfxCrash();
+      for (let i = 0; i < 26; i++) {
+        particles.push({ x: p.x + 10, y: p.y - 35, vx: rand(-350, 250), vy: rand(-450, 100), life: rand(0.4, 0.9), max: 0.9, color: pick(["#ffd166", "#ff7b29", "#fff"]), size: rand(2, 5), grav: true });
+      }
+    }
+  }
+
+  function gameOver() {
+    state = "over"; overT = 0;
+    const m = Math.floor(distance / 10);
+    if (m > best) { best = m; newBest = true; save("trainRunnerBest", String(best)); }
+  }
+
+  function updatePlayer(dt) {
+    const p = player;
+    if (p.dead) {
+      p.vy += GRAV * dt; p.y += p.vy * dt; p.x += p.vx * dt; p.rot += p.spin * dt;
+      deathT += dt;
+      if (deathT > 1.1) gameOver();
+      return;
+    }
+    p.phase += dt * speed / 36;
+    jumpBuffer -= dt; p.coyote -= dt;
+
+    if (p.onGround && !isSupported()) { p.onGround = false; p.coyote = 0.08; p.vy = 0; }
+
+    if (jumpBuffer > 0 && (p.onGround || p.coyote > 0)) {
+      p.vy = -JUMP_V; p.onGround = false; p.coyote = 0; jumpBuffer = 0;
+      sfxJump();
+      dust(6);
+    }
+    p.duck = duckHeld();
+
+    if (!p.onGround) {
+      const g = p.duck ? GRAV * 2.6 : GRAV;   // hold duck in the air to drop faster
+      const prevY = p.y;
+      p.vy += g * dt; p.y += p.vy * dt;
+      if (p.vy > 0 && prevY <= ROOF + 0.01 && p.y >= ROOF && isSupported()) {
+        p.y = ROOF; p.vy = 0; p.onGround = true;
+        dust(8);
+      }
+      if (p.y > ROOF + 14) return die("fall");
+    } else {
+      p.dustT -= dt;
+      if (p.dustT <= 0) { dust(1); p.dustT = p.duck ? 0.03 : 0.12; }
+    }
+
+    // Collisions
+    const h = p.duck && p.onGround ? DUCK_H : STAND_H;
+    const l = p.x - 12, r = p.x + 12, top = p.y - h, bot = p.y;
+    for (const o of obs) {
+      if (o.x + 4 > r || o.x + o.w - 4 < l) continue;
+      if (o.type === "low") {
+        if (bot > ROOF - o.h + 5) return die("low");
+      } else if (top < CLEAR) {
+        return die("high");
+      }
+    }
+  }
+
+  function dust(n) {
+    for (let i = 0; i < n; i++) {
+      particles.push({ x: player.x - 6 + rand(-6, 6), y: ROOF - 2, vx: -speed * rand(0.2, 0.5), vy: rand(-90, -10), life: rand(0.25, 0.5), max: 0.5, color: "#d8cfe8", size: rand(2, 4) });
+    }
+  }
+
+  function update(dt) {
+    if (state === "title") { scroll += 160 * dt; return; }
+    if (state === "over") { overT += dt; }
+    if (state === "playing") {
+      if (!player.dead) speed = Math.min(MAX_SPEED, speed + ACCEL * dt);
+      else speed *= Math.exp(-4 * dt);
+      const dx = speed * dt;
+      scroll += dx;
+      if (!player.dead) distance += dx;
+      for (const c of cars) c.x -= dx;
+      for (const o of obs) o.x -= dx;
+      while (cars.length > 1 && cars[0].x + cars[0].w + cars[0].gapAfter < -200) cars.shift();
+      obs = obs.filter(o => o.x + o.w > -150);
+      while (cars[cars.length - 1].x < W + 800) spawnCar();
+      updatePlayer(dt);
+
+      if (!player.dead && distance / 10 >= nextMilestone) {
+        popups.push({ text: nextMilestone + " m!", t: 0 });
+        nextMilestone += 500;
+        sfxMilestone();
+      }
+      if (speed > 560 && Math.random() < (speed - 500) / 900) {
+        speedLines.push({ x: W + 20, y: rand(20, 340), len: rand(60, 180) });
+      }
+    }
+    if (state !== "paused") {
+      for (const s of speedLines) s.x -= speed * 1.8 * dt;
+      speedLines = speedLines.filter(s => s.x + s.len > 0);
+      for (const q of particles) {
+        q.x += q.vx * dt; q.y += q.vy * dt; q.life -= dt;
+        if (q.grav) q.vy += 1400 * dt;
+      }
+      particles = particles.filter(q => q.life > 0);
+      for (const pu of popups) pu.t += dt;
+      popups = popups.filter(pu => pu.t < 1.6);
+      shake = Math.max(0, shake - 40 * dt);
+      flash = Math.max(0, flash - 3 * dt);
+    }
+  }
+
+  // ---------- Scenery ----------
+  function makeLayer(n, minW, maxW, minH, maxH) {
+    let x = 0; const arr = [];
+    for (let i = 0; i < n; i++) {
+      const w = rand(minW, maxW), h = rand(minH, maxH);
+      const cols = Math.floor((w - 8) / 12), rows = Math.floor((h - 10) / 16);
+      const lit = Array.from({ length: cols * rows }, () => Math.random() < 0.35);
+      arr.push({ x, w, h, cols, rows, lit, antenna: Math.random() < 0.25 });
+      x += w + rand(0, 14);
+    }
+    return { arr, len: x };
+  }
+  const farLayer = makeLayer(34, 50, 120, 80, 210);
+  const nearLayer = makeLayer(30, 60, 130, 50, 150);
+  const stars = Array.from({ length: 90 }, () => ({ x: rand(0, W), y: rand(0, 230), r: rand(0.6, 1.8), tw: rand(0, 6) }));
+
+  // Retro striped sunset sun, pre-rendered once
+  const sunCanvas = document.createElement("canvas");
+  sunCanvas.width = sunCanvas.height = 240;
+  (() => {
+    const s = sunCanvas.getContext("2d");
+    const g = s.createLinearGradient(0, 0, 0, 240);
+    g.addColorStop(0, "#ffe66d"); g.addColorStop(0.55, "#ff8e53"); g.addColorStop(1, "#ff3f7f");
+    s.fillStyle = g;
+    s.beginPath(); s.arc(120, 120, 118, 0, Math.PI * 2); s.fill();
+    for (let i = 0; i < 7; i++) {
+      const y = 130 + i * 15, hgt = 2 + i * 1.3;
+      s.clearRect(0, y, 240, hgt);
+    }
+  })();
+
+  function drawSky(t) {
+    const g = ctx.createLinearGradient(0, 0, 0, 430);
+    g.addColorStop(0, "#120a2e"); g.addColorStop(0.45, "#3b1a5c"); g.addColorStop(0.78, "#a83a6e"); g.addColorStop(1, "#ff8c5a");
+    ctx.fillStyle = g;
+    ctx.fillRect(-30, -30, W + 60, 470);
+    for (const s of stars) {
+      ctx.globalAlpha = 0.4 + 0.6 * Math.abs(Math.sin(t * 1.5 + s.tw));
+      ctx.fillStyle = "#fff";
+      const x = ((s.x - scroll * 0.01) % W + W) % W;
+      ctx.fillRect(x, s.y, s.r, s.r);
+    }
+    ctx.globalAlpha = 1;
+    ctx.drawImage(sunCanvas, 600, 200);
+  }
+
+  function drawLayer(layer, factor, base, color, windows) {
+    const off = (scroll * factor) % layer.len;
+    ctx.fillStyle = color;
+    for (let k = 0; k < 3; k++) {
+      for (const b of layer.arr) {
+        const bx = b.x - off + k * layer.len;
+        if (bx > W || bx + b.w < 0) continue;
+        ctx.fillStyle = color;
+        ctx.fillRect(bx, base - b.h, b.w, b.h + 140);
+        if (b.antenna) ctx.fillRect(bx + b.w / 2 - 1, base - b.h - 18, 2, 18);
+        if (windows) {
+          ctx.fillStyle = "rgba(255, 210, 122, 0.75)";
+          for (let r = 0; r < b.rows; r++) for (let c = 0; c < b.cols; c++) {
+            if (b.lit[r * b.cols + c]) ctx.fillRect(bx + 6 + c * 12, base - b.h + 8 + r * 16, 5, 7);
+          }
+        }
+      }
+    }
+  }
+
+  function drawPoles() {
+    const gap = 300, f = 0.6;
+    const off = (scroll * f) % gap;
+    ctx.strokeStyle = "#0b0814"; ctx.fillStyle = "#0b0814"; ctx.lineWidth = 1.5;
+    const tops = [];
+    for (let x = -off - gap; x < W + gap; x += gap) {
+      ctx.fillRect(x - 3, 236, 6, 240);
+      ctx.fillRect(x - 22, 246, 44, 5);
+      tops.push(x);
+    }
+    for (let i = 0; i < tops.length - 1; i++) {
+      for (const dy of [0, 8]) {
+        const a = tops[i], b = tops[i + 1];
+        ctx.beginPath();
+        ctx.moveTo(a + (dy ? 18 : -18), 246 + dy * 0.2);
+        ctx.quadraticCurveTo((a + b) / 2, 268 + dy, b + (dy ? 18 : -18), 246 + dy * 0.2);
+        ctx.stroke();
+      }
+    }
+  }
+
+  function drawTrack() {
+    ctx.fillStyle = "#130d1e";
+    ctx.fillRect(-30, 425, W + 60, 140);
+    ctx.fillStyle = "#2a2233";
+    ctx.fillRect(-30, 498, W + 60, 70);
+    ctx.fillStyle = "#4a3628";
+    const off = scroll % 34;
+    for (let x = -off - 34; x < W + 34; x += 34) ctx.fillRect(x, 500, 20, 7);
+    ctx.fillStyle = "#8a8fa0"; ctx.fillRect(-30, 494, W + 60, 5);
+    ctx.fillStyle = "#c9cede"; ctx.fillRect(-30, 494, W + 60, 1.5);
+  }
+
+  function rr(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
+  function drawWheel(cx, cy) {
+    ctx.fillStyle = "#15151c";
+    ctx.beginPath(); ctx.arc(cx, cy, 13, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#6d7285"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(cx, cy, 9, 0, Math.PI * 2); ctx.stroke();
+    const a = scroll / 13;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * 9, cy + Math.sin(a) * 9); ctx.lineTo(cx - Math.cos(a) * 9, cy - Math.sin(a) * 9);
+    ctx.moveTo(cx + Math.cos(a + 1.57) * 9, cy + Math.sin(a + 1.57) * 9); ctx.lineTo(cx - Math.cos(a + 1.57) * 9, cy - Math.sin(a + 1.57) * 9);
+    ctx.stroke();
+  }
+
+  function drawCar(c) {
+    const x = c.x, w = c.w, top = ROOF;
+    if (x > W + 30 || x + w + c.gapAfter < -30) return;
+    // coupler to the next car
+    if (c.gapAfter === COUPLER) {
+      ctx.fillStyle = "#111";
+      ctx.fillRect(x + w - 4, top + 84, COUPLER + 8, 9);
+      ctx.fillStyle = "#2c2c36";
+      ctx.fillRect(x + w, top + 20, COUPLER, 64);
+    }
+    // underframe, bogies, wheels
+    ctx.fillStyle = "#1c1c24";
+    ctx.fillRect(x + 16, top + 104, w - 32, 10);
+    for (const bx of [x + 80, x + w - 80]) {
+      ctx.fillStyle = "#24242e";
+      ctx.fillRect(bx - 48, top + 112, 96, 9);
+      drawWheel(bx - 28, top + 121);
+      drawWheel(bx + 28, top + 121);
+    }
+    // body
+    ctx.fillStyle = c.color;
+    rr(x, top + 6, w, 100, 6); ctx.fill();
+    ctx.fillStyle = "rgba(0,0,0,0.22)";
+    ctx.fillRect(x, top + 78, w, 28);
+    ctx.fillStyle = "rgba(255,255,255,0.22)";
+    ctx.fillRect(x, top + 68, w, 5);
+    // windows
+    let i = 0;
+    for (let wx = x + 28; wx < x + w - 50; wx += 46, i++) {
+      if (wx + 30 < -10 || wx > W + 10) continue;
+      ctx.fillStyle = "rgba(0,0,0,0.35)";
+      ctx.fillRect(wx - 2, top + 22, 34, 34);
+      ctx.fillStyle = (i * 7 + c.seed) % 5 ? "#ffe08a" : "#2b2f45";
+      ctx.fillRect(wx, top + 24, 30, 30);
+    }
+    // car number
+    ctx.fillStyle = "rgba(255,255,255,0.75)";
+    ctx.font = "bold 14px system-ui, sans-serif";
+    ctx.fillText("RX " + c.id, x + 16, top + 95);
+    // roof
+    ctx.fillStyle = "#b8bcc8";
+    ctx.fillRect(x - 2, top, w + 4, 9);
+    ctx.fillStyle = "#7b8091";
+    ctx.fillRect(x - 2, top + 7, w + 4, 3);
+    ctx.fillStyle = "#9da2b1";
+    for (let rx = x + 10; rx < x + w - 10; rx += 26) {
+      if (rx > -10 && rx < W + 10) ctx.fillRect(rx, top + 3, 14, 2);
+    }
+  }
+
+  function drawLow(o) {
+    const x = o.x, y = ROOF - o.h;
+    if (o.variant === "crate" || o.variant === "crates2") {
+      const boxes = o.variant === "crate" ? [[x, y, o.w, o.h]] : [[x, ROOF - 34, o.w, 34], [x + 5, y, o.w - 10, o.h - 34]];
+      for (const [bx, by, bw, bh] of boxes) {
+        ctx.fillStyle = "#a8692b"; ctx.fillRect(bx, by, bw, bh);
+        ctx.strokeStyle = "#5c3a16"; ctx.lineWidth = 3;
+        ctx.strokeRect(bx + 1.5, by + 1.5, bw - 3, bh - 3);
+        ctx.beginPath(); ctx.moveTo(bx + 3, by + 3); ctx.lineTo(bx + bw - 3, by + bh - 3);
+        ctx.moveTo(bx + bw - 3, by + 3); ctx.lineTo(bx + 3, by + bh - 3); ctx.stroke();
+      }
+    } else if (o.variant === "vent") {
+      ctx.fillStyle = "#8e98a8"; rr(x, y, o.w, o.h, 4); ctx.fill();
+      ctx.fillStyle = "#5b6475"; ctx.fillRect(x + 4, y + 4, o.w - 8, 4);
+      const cx = x + o.w / 2, cy = y + o.h / 2 + 3;
+      ctx.fillStyle = "#3a404d"; ctx.beginPath(); ctx.arc(cx, cy, 10, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "#c3cad6"; ctx.lineWidth = 2;
+      const a = performance.now() / 60;
+      ctx.beginPath();
+      for (let k = 0; k < 3; k++) { const b = a + k * 2.09; ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(b) * 9, cy + Math.sin(b) * 9); }
+      ctx.stroke();
+    } else {
+      for (const bx of [x, x + o.w / 2]) {
+        ctx.fillStyle = "#2f7d4f"; rr(bx + 1, y, o.w / 2 - 2, o.h, 5); ctx.fill();
+        ctx.fillStyle = "#1d5233";
+        ctx.fillRect(bx + 1, y + 9, o.w / 2 - 2, 3); ctx.fillRect(bx + 1, y + o.h - 12, o.w / 2 - 2, 3);
+        ctx.fillStyle = "#ffd166"; ctx.font = "bold 12px system-ui"; ctx.fillText("⚠", bx + 8, y + 27);
+      }
+    }
+  }
+
+  function hazard(x, y, w, h) {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    ctx.fillStyle = "#f5c518"; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = "#111";
+    for (let sx = x - h; sx < x + w + h; sx += 18) {
+      ctx.beginPath(); ctx.moveTo(sx, y + h); ctx.lineTo(sx + 9, y + h); ctx.lineTo(sx + 9 + h, y); ctx.lineTo(sx + h, y); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawHigh(o, t) {
+    const x = o.x, w = o.w;
+    if (o.variant === "bridge") {
+      ctx.fillStyle = "#2a2f3d"; ctx.fillRect(x - 10, -30, w + 20, 150);      // deck / abutment above
+      ctx.fillStyle = "#3b4252";
+      ctx.fillRect(x - 10, 112, w + 20, 14);                                 // top chord
+      ctx.fillRect(x - 10, 284, w + 20, 16);                                 // bottom chord
+      ctx.fillRect(x - 10, 112, 10, 188); ctx.fillRect(x + w, 112, 10, 188);
+      ctx.strokeStyle = "#5d6b82"; ctx.lineWidth = 6;
+      ctx.beginPath();
+      const n = Math.max(2, Math.round(w / 45)), step = w / n;
+      for (let k = 0; k < n; k++) {
+        ctx.moveTo(x + k * step, k % 2 ? 126 : 284);
+        ctx.lineTo(x + (k + 1) * step, k % 2 ? 284 : 126);
+      }
+      ctx.stroke();
+      ctx.fillStyle = "#6f7d96"; ctx.fillRect(x - 10, 112, w + 20, 3);
+      hazard(x - 10, 300, w + 20, CLEAR - 300);
+      const on = Math.sin(t * 10) > 0;
+      ctx.fillStyle = on ? "#ff3344" : "#5a1018";
+      ctx.beginPath(); ctx.arc(x - 2, 296, 5, 0, Math.PI * 2); ctx.arc(x + w + 2, 296, 5, 0, Math.PI * 2); ctx.fill();
+    } else {
+      ctx.strokeStyle = "#9aa3b5"; ctx.lineWidth = 3; ctx.setLineDash([6, 4]);
+      ctx.beginPath(); ctx.moveTo(x + 12, -10); ctx.lineTo(x + 12, 250); ctx.moveTo(x + w - 12, -10); ctx.lineTo(x + w - 12, 250); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "#3b4252"; ctx.fillRect(x - 6, 120, w + 12, 12);
+      ctx.fillRect(x - 6, 240, w + 12, 10);
+      hazard(x, 250, w, CLEAR - 250);
+      ctx.fillStyle = "#111"; ctx.fillRect(x + 8, 262, w - 16, 26);
+      ctx.fillStyle = "#ffd166"; ctx.font = "bold 18px system-ui, sans-serif"; ctx.textAlign = "center";
+      ctx.fillText("DUCK", x + w / 2, 282); ctx.textAlign = "left";
+    }
+  }
+
+  // ---------- Runner ----------
+  function limb(ax, ay, l1, a1, l2, a2) {
+    const kx = ax + Math.sin(a1) * l1, ky = ay + Math.cos(a1) * l1;
+    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(kx, ky);
+    ctx.lineTo(kx + Math.sin(a2) * l2, ky + Math.cos(a2) * l2); ctx.stroke();
+  }
+
+  function drawPlayer(t) {
+    const p = player;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    if (p.dead) { ctx.translate(0, -32); ctx.rotate(p.rot); ctx.translate(0, 32); }
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    const back = "#1d1a33", front = "#2d2a4a";
+    const running = state === "playing" || state === "paused";
+    const sliding = p.duck && p.onGround && !p.dead;
+    let hip, sh, head;
+    ctx.lineWidth = 7;
+    if (sliding) {
+      hip = [0, -10]; sh = [-14, -20]; head = [-19, -25];
+      ctx.strokeStyle = back; limb(hip[0], hip[1], 14, 0.9, 14, 2.4); limb(sh[0], sh[1], 12, -0.8, 11, -0.5);
+    } else if (!p.onGround && !p.dead) {
+      hip = [0, -30]; sh = [4, -52]; head = [7, -61];
+      ctx.strokeStyle = back; limb(hip[0], hip[1], 15, -0.6, 15, -1.7); limb(sh[0], sh[1], 11, -2.3, 10, -1.6);
+    } else {
+      hip = [0, -30]; sh = [4, -52]; head = [7, -61];
+      const ph = running ? p.phase + Math.PI : 0;
+      ctx.strokeStyle = back;
+      limb(hip[0], hip[1], 15, Math.sin(ph) * 0.85, 15, Math.sin(ph) * 0.85 - (0.2 + 1.3 * Math.max(0, Math.cos(ph))));
+      limb(sh[0], sh[1], 11, -Math.sin(ph) * 0.9, 10, -Math.sin(ph) * 0.9 + 1.4);
+    }
+    // scarf
+    ctx.strokeStyle = "#3ee8ff"; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(sh[0], sh[1] + 1);
+    for (let i = 1; i <= 5; i++) ctx.lineTo(sh[0] - i * 7, sh[1] + 2 + Math.sin(t * 18 - i * 0.9) * i * 0.9);
+    ctx.stroke();
+    // torso
+    ctx.strokeStyle = "#ff7b29"; ctx.lineWidth = 12;
+    ctx.beginPath(); ctx.moveTo(hip[0], hip[1]); ctx.lineTo(sh[0], sh[1]); ctx.stroke();
+    // head
+    ctx.fillStyle = "#f5c99b";
+    ctx.beginPath(); ctx.arc(head[0], head[1], 9, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#2b1d14";
+    ctx.beginPath(); ctx.arc(head[0] - 1, head[1] - 2, 9, Math.PI * 0.95, Math.PI * 2.05); ctx.fill();
+    ctx.fillStyle = "#e63946"; ctx.fillRect(head[0] - 9, head[1] - 4, 18, 3);
+    // front limbs
+    ctx.strokeStyle = front; ctx.lineWidth = 7;
+    if (sliding) {
+      limb(hip[0], hip[1], 14, 1.45, 14, 1.4); limb(sh[0], sh[1], 12, 2.2, 10, 2.6);
+    } else if (!p.onGround && !p.dead) {
+      limb(hip[0], hip[1], 15, 1.0, 15, -0.3); limb(sh[0], sh[1], 11, 2.4, 10, 2.9);
+    } else {
+      const ph = running ? p.phase : 0.3;
+      limb(hip[0], hip[1], 15, Math.sin(ph) * 0.85, 15, Math.sin(ph) * 0.85 - (0.2 + 1.3 * Math.max(0, Math.cos(ph))));
+      limb(sh[0], sh[1], 11, -Math.sin(ph) * 0.9, 10, -Math.sin(ph) * 0.9 + 1.4);
+    }
+    ctx.restore();
+  }
+
+  // ---------- HUD & overlays ----------
+  function text(str, x, y, size, color = "#fff", align = "center") {
+    ctx.font = `800 ${size}px system-ui, sans-serif`;
+    ctx.textAlign = align;
+    ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.fillText(str, x + 2, y + 3);
+    ctx.fillStyle = color; ctx.fillText(str, x, y);
+    ctx.textAlign = "left";
+  }
+
+  function panel(h) {
+    ctx.fillStyle = "rgba(8, 5, 22, 0.55)"; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "rgba(20, 12, 45, 0.85)";
+    rr(W / 2 - 290, H / 2 - h / 2, 580, h, 18); ctx.fill();
+    ctx.strokeStyle = "rgba(62, 232, 255, 0.6)"; ctx.lineWidth = 2; ctx.stroke();
+  }
+
+  function drawUI(t) {
+    if (state !== "title") {
+      text(Math.floor(distance / 10) + " m", 22, 46, 34, "#fff", "left");
+      text("BEST " + best + " m", 24, 74, 16, "#ffd166", "left");
+    }
+    for (const pu of popups) {
+      ctx.globalAlpha = Math.max(0, 1 - pu.t / 1.6);
+      text(pu.text, W / 2, 120 - pu.t * 30, 42, "#3ee8ff");
+      ctx.globalAlpha = 1;
+    }
+    if (state === "playing" && distance < 1200 && !player.dead) {
+      ctx.globalAlpha = Math.min(1, (1200 - distance) / 300);
+      text("SPACE / ↑ jump    ↓ duck    P pause", W / 2, 160, 20, "#fff");
+      ctx.globalAlpha = 1;
+    }
+    const blink = Math.sin(t * 5) > -0.3;
+    if (state === "title") {
+      panel(300);
+      text("TRAIN TOP RUNNER", W / 2, H / 2 - 82, 52, "#ff7b29");
+      text("Leap the crates • Duck the bridges • Jump the gaps between cars", W / 2, H / 2 - 38, 18, "#e6dcff");
+      text("Jump: Space / ↑ / W   •   Duck: ↓ / S   •   Pause: P / Esc   •   Mute: M", W / 2, H / 2 - 4, 15, "#bfb3e6");
+      text("Touch: tap top half to jump, hold bottom half to duck", W / 2, H / 2 + 22, 15, "#bfb3e6");
+      if (best) text("Best: " + best + " m", W / 2, H / 2 + 60, 20, "#ffd166");
+      if (blink) text("Press SPACE or tap to run!", W / 2, H / 2 + 105, 26, "#3ee8ff");
+    } else if (state === "paused") {
+      panel(180);
+      text("PAUSED", W / 2, H / 2 - 18, 56, "#ffd166");
+      text("Press P / Esc or tap to resume", W / 2, H / 2 + 40, 20, "#e6dcff");
+    } else if (state === "over") {
+      panel(270);
+      text("WIPEOUT!", W / 2, H / 2 - 72, 58, "#ff4d6d");
+      text(deathMsg, W / 2, H / 2 - 30, 20, "#e6dcff");
+      text(Math.floor(distance / 10) + " m", W / 2, H / 2 + 22, 44, "#fff");
+      text(newBest ? "★ NEW BEST! ★" : "Best: " + best + " m", W / 2, H / 2 + 56, 20, "#ffd166");
+      if (blink && overT > 0.5) text("Press SPACE or tap to run again", W / 2, H / 2 + 100, 22, "#3ee8ff");
+    }
+  }
+
+  function render(t) {
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    ctx.save();
+    if (shake > 0) ctx.translate(rand(-shake, shake), rand(-shake, shake));
+    drawSky(t);
+    drawLayer(farLayer, 0.08, 420, "#2a1640", false);
+    drawLayer(nearLayer, 0.22, 432, "#1a0f2b", true);
+    drawPoles();
+    drawTrack();
+    for (const c of cars) drawCar(c);
+    for (const o of obs) if (o.type === "low" && o.x < W + 20 && o.x + o.w > -20) drawLow(o);
+    drawPlayer(t);
+    for (const o of obs) if (o.type === "high" && o.x < W + 30 && o.x + o.w > -30) drawHigh(o, t);
+    for (const q of particles) {
+      ctx.globalAlpha = Math.max(0, q.life / q.max);
+      ctx.fillStyle = q.color; ctx.fillRect(q.x, q.y, q.size, q.size);
+    }
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = "rgba(255,255,255,0.28)"; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (const s of speedLines) { ctx.moveTo(s.x, s.y); ctx.lineTo(s.x + s.len, s.y); }
+    ctx.stroke();
+    ctx.restore();
+    if (flash > 0) { ctx.fillStyle = `rgba(255,255,255,${flash * 0.5})`; ctx.fillRect(0, 0, W, H); }
+    drawUI(t);
+  }
+
+  // ---------- Audio: fast-paced synth soundtrack (Web Audio, no files) ----------
+  let actx = null, master, musicGain, sfxGain, noiseBuf;
+  let muted = load("trainRunnerMuted") === "1";
+  const soundBtn = document.getElementById("soundBtn");
+  const pauseBtn = document.getElementById("pauseBtn");
+  soundBtn.textContent = muted ? "🔇" : "🔊";
+
+  function initAudio() {
+    if (actx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    actx = new AC();
+    master = actx.createGain(); master.gain.value = muted ? 0 : 0.9;
+    const comp = actx.createDynamicsCompressor();
+    master.connect(comp).connect(actx.destination);
+    musicGain = actx.createGain(); musicGain.gain.value = 0.55; musicGain.connect(master);
+    sfxGain = actx.createGain(); sfxGain.gain.value = 0.6; sfxGain.connect(master);
+    noiseBuf = actx.createBuffer(1, actx.sampleRate, actx.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+
+  function toggleMute() {
+    muted = !muted;
+    save("trainRunnerMuted", muted ? "1" : "0");
+    soundBtn.textContent = muted ? "🔇" : "🔊";
+    if (master) master.gain.setTargetAtTime(muted ? 0 : 0.9, actx.currentTime, 0.02);
+  }
+
+  const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+
+  function tone(type, freq, t, dur, peak, out, cutoff, endFreq) {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (endFreq) o.frequency.exponentialRampToValueAtTime(endFreq, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    let node = o;
+    if (cutoff) {
+      const f = actx.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = cutoff;
+      o.connect(f); node = f;
+    }
+    node.connect(g).connect(out);
+    o.start(t); o.stop(t + dur + 0.02);
+    return o;
+  }
+
+  function noise(t, dur, peak, type, freq, out) {
+    const s = actx.createBufferSource(); s.buffer = noiseBuf;
+    const f = actx.createBiquadFilter(); f.type = type; f.frequency.value = freq;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(peak, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(f).connect(g).connect(out);
+    s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.02);
+  }
+
+  const kick = t => tone("sine", 160, t, 0.22, 0.95, musicGain, 0, 42);
+  const snare = (t, v = 1) => { noise(t, 0.14, 0.42 * v, "highpass", 1200, musicGain); tone("triangle", 200, t, 0.08, 0.25 * v, musicGain); };
+  const hat = (t, open) => noise(t, open ? 0.12 : 0.035, open ? 0.12 : 0.07, "highpass", 7500, musicGain);
+  const crash = t => noise(t, 1.1, 0.14, "highpass", 4000, musicGain);
+
+  function bass(m, t, dur) {
+    const o = actx.createOscillator(), f = actx.createBiquadFilter(), g = actx.createGain();
+    o.type = "sawtooth"; o.frequency.value = mtof(m);
+    f.type = "lowpass"; f.Q.value = 6;
+    f.frequency.setValueAtTime(1600, t); f.frequency.exponentialRampToValueAtTime(260, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.22, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(f).connect(g).connect(musicGain);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  function lead(m, t, dur) {
+    for (const det of [-9, 9]) {
+      const o = tone("sawtooth", mtof(m), t, dur, 0.06, musicGain, 3200);
+      o.detune.value = det;
+    }
+  }
+
+  // A minor: Am - F - C - G, the classic driving progression
+  const CHORDS = [
+    { b: 45, a: [69, 72, 76, 81] },
+    { b: 41, a: [65, 69, 72, 77] },
+    { b: 48, a: [67, 72, 76, 79] },
+    { b: 43, a: [67, 71, 74, 79] },
+  ];
+  const ARP = [0, 1, 2, 3, 2, 1, 0, 1, 2, 3, 2, 1, 0, 2, 1, 3];
+  const MELODY = [  // one note per 8th, 0 = rest
+    81, 0, 79, 81, 0, 76, 0, 72,
+    77, 0, 76, 77, 0, 72, 0, 69,
+    76, 0, 74, 76, 0, 79, 0, 84,
+    83, 0, 81, 79, 0, 74, 0, 71,
+  ];
+
+  const music = { timer: null, step: 0, next: 0 };
+  const bpm = () => 150 + 30 * Math.min(1, Math.max(0, (speed - START_SPEED) / (MAX_SPEED - START_SPEED)));
+
+  function playStep(s, t) {
+    const bar = Math.floor(s / 16), i = s % 16, ch = CHORDS[bar % 4];
+    const section = Math.floor(bar / 4) % 4;   // 0 = intro groove, 1-3 = melody, 3 = melody up an octave
+    const dur = 60 / bpm() / 4;
+    if (i === 0 && bar % 4 === 0) crash(t);
+    if (i % 4 === 0) kick(t);
+    if (i === 4 || i === 12) snare(t);
+    if (bar % 4 === 3 && i >= 12) snare(t, 0.35 + (i - 12) * 0.15);   // drum fill into the next phrase
+    hat(t, i % 4 === 2);
+    bass(ch.b + (i % 2 ? 12 : 0), t, dur * 0.9);
+    tone("square", mtof(ch.a[ARP[i]]), t, dur * 0.8, section === 0 ? 0.05 : 0.035, musicGain, 2600);
+    if (section > 0 && i % 2 === 0) {
+      const m = MELODY[(bar % 4) * 8 + i / 2];
+      if (m) lead(m + (section === 3 ? 12 : 0), t, dur * 1.9);
+    }
+  }
+
+  function scheduleMusic() {
+    if (!actx) return;
+    if (music.next < actx.currentTime - 0.1) music.next = actx.currentTime + 0.02;
+    while (music.next < actx.currentTime + 0.15) {
+      playStep(music.step, music.next);
+      music.next += 60 / bpm() / 4;
+      music.step++;
+    }
+  }
+
+  function startMusic() {
+    if (!actx) return;
+    stopMusic();
+    music.step = 0;
+    music.next = actx.currentTime + 0.06;
+    scheduleMusic();
+    music.timer = setInterval(scheduleMusic, 25);
+  }
+  function stopMusic() { clearInterval(music.timer); music.timer = null; }
+
+  function sfxJump() { if (actx) tone("square", 330, actx.currentTime, 0.14, 0.12, sfxGain, 2500, 720); }
+  function sfxCrash() {
+    if (!actx) return;
+    const t = actx.currentTime;
+    noise(t, 0.5, 0.7, "lowpass", 1400, sfxGain);
+    tone("sawtooth", 220, t, 0.6, 0.25, sfxGain, 1200, 40);
+  }
+  function sfxFall() { if (actx) tone("triangle", 700, actx.currentTime, 0.9, 0.25, sfxGain, 0, 70); }
+  function sfxMilestone() {
+    if (!actx) return;
+    const t = actx.currentTime;
+    tone("square", 880, t, 0.1, 0.1, sfxGain, 4000);
+    tone("square", 1320, t + 0.09, 0.18, 0.1, sfxGain, 4000);
+  }
+
+  // ---------- Input ----------
+  const JUMP_KEYS = ["Space", "ArrowUp", "KeyW"], DUCK_KEYS = ["ArrowDown", "KeyS"];
+
+  function pressJump() {
+    if (state === "title" || (state === "over" && overT > 0.5)) startGame();
+    else if (state === "paused") togglePause();
+    else if (state === "playing") jumpBuffer = 0.12;
+  }
+
+  addEventListener("keydown", e => {
+    const k = e.code;
+    if (JUMP_KEYS.includes(k) || DUCK_KEYS.includes(k)) e.preventDefault();
+    if (k === "KeyP" || k === "Escape") { if (!e.repeat) togglePause(); return; }
+    if (k === "KeyM") { if (!e.repeat) toggleMute(); return; }
+    if (JUMP_KEYS.includes(k)) { keys.jump = true; if (!e.repeat) pressJump(); }
+    if (DUCK_KEYS.includes(k)) keys.duckKey = true;
+  });
+  addEventListener("keyup", e => {
+    if (JUMP_KEYS.includes(e.code)) keys.jump = false;
+    if (DUCK_KEYS.includes(e.code)) keys.duckKey = false;
+  });
+
+  canvas.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    if (state !== "playing") { if (state === "paused") togglePause(); else pressJump(); return; }
+    const r = canvas.getBoundingClientRect();
+    if ((e.clientY - r.top) / r.height > 0.5) duckPointers.add(e.pointerId);
+    else pressJump();
+  });
+  const release = e => duckPointers.delete(e.pointerId);
+  addEventListener("pointerup", release);
+  addEventListener("pointercancel", release);
+  canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+  pauseBtn.addEventListener("click", () => { togglePause(); pauseBtn.blur(); });
+  soundBtn.addEventListener("click", () => { initAudio(); toggleMute(); soundBtn.blur(); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden && state === "playing" && !player.dead) togglePause(); });
+
+  // ---------- Main loop ----------
+  reset();
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+    if (state !== "paused") update(dt);
+    render(now / 1000);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+</script>
+</body>
+</html>
