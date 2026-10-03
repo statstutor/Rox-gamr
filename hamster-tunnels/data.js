@@ -86,7 +86,7 @@ const WORLDS = [
       { id: 'bee', e: '🐝', name: 'Buzzy Bee', role: 'helper', lines: ['Bzzz! I found this in a flower. For you!', 'Bzz-bzz! Keep digging, hero!'] },
       { id: 'snail', e: '🐌', name: 'Professor Shellby', role: 'riddler', lines: ['Ahem! Slow down, young hamster. Answer my riddle!'] },
     ],
-    ambient: { hostile: 6, friend: 3, stones: 0, chests: 3, snacks: 6 },
+    ambient: { hostile: 4, friend: 3, stones: 0, chests: 2, snacks: 4 },
     accessories: ['leafhat', 'flowercrown', 'bow', 'bowtie', 'backpack'],
     plan: [
       [{ type: 'collect', n: 3 }, { type: 'defeat', n: 1, who: 'worm' }, { type: 'clue' }],
@@ -148,7 +148,7 @@ const WORLDS = [
       { id: 'parrot', e: '🦜', name: 'Captain Squawk', role: 'riddler', lines: ['SQUAWK! Answer me this, matey!'] },
       { id: 'sloth', e: '🦥', name: 'Slowpoke Sage', role: 'riddler', lines: ['Hellooo... think... slowly... about... this...'] },
     ],
-    ambient: { hostile: 9, friend: 4, stones: 1, chests: 3, snacks: 5 },
+    ambient: { hostile: 5, friend: 4, stones: 1, chests: 2, snacks: 4 },
     accessories: ['explorer', 'lei', 'sunglasses', 'mustache'],
     plan: [
       [{ type: 'collect', n: 4 }, { type: 'defeat', n: 2 }, { type: 'riddle', n: 1 }, { type: 'clue' }],
@@ -210,7 +210,7 @@ const WORLDS = [
       { id: 'owl', e: '🦉', name: 'Hoot the Wise', role: 'riddler', lines: ['Hoo-hoo... only a clever mind may pass. Listen closely...'] },
       { id: 'fox', e: '🦊', name: 'Riddlesnout the Fox', role: 'riddler', lines: ['Heh heh. Think you\'re clever? Try THIS one.'] },
     ],
-    ambient: { hostile: 12, friend: 4, stones: 2, chests: 3, snacks: 5 },
+    ambient: { hostile: 6, friend: 4, stones: 1, chests: 2, snacks: 4 },
     accessories: ['beanie', 'earmuffs', 'scarf', 'goggles'],
     plan: [
       [{ type: 'collect', n: 4 }, { type: 'defeat', n: 3 }, { type: 'riddle', n: 2 }, { type: 'clue' }],
@@ -275,7 +275,7 @@ const WORLDS = [
       { id: 'stranger', e: '👽', name: 'Mysterious Alien', role: 'mystery', lines: ['...'] },
       { id: 'stranger', e: '👽', name: 'Mysterious Alien', role: 'mystery', lines: ['...'] },
     ],
-    ambient: { hostile: 14, friend: 6, stones: 3, chests: 3, snacks: 6 },
+    ambient: { hostile: 7, friend: 5, stones: 2, chests: 2, snacks: 4 },
     accessories: ['spacehelmet', 'antennae', 'jetpack', 'cape', 'monocle'],
     plan: [
       [{ type: 'collect', n: 5 }, { type: 'defeat', n: 4 }, { type: 'riddle', n: 2 }, { type: 'friend', n: 1 }, { type: 'clue' }],

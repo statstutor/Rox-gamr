@@ -324,7 +324,7 @@ function toast(msg, cls = '') {
 }
 
 // ================= the tunnelling world =================
-const MW = 30, MH = 100, HOME = { x: 15, y: 3 };
+const MW = 20, MH = 50, HOME = { x: 10, y: 3 }; // a compact map keeps tasks within easy reach
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const SKY = 3, DIRT = 1, STONE = 2, OPEN = 0;
 let G = null;
@@ -345,6 +345,9 @@ function enterWorld(w) {
   Sound.play('w' + w);
   const ws = S.worlds[w];
   if (!ws.tasks) ws.tasks = makeTasks(w, ws.wave);
+  // saves from the old, deeper map: keep depth goals reachable
+  ws.maxDepth = Math.min(ws.maxDepth, MH - 6);
+  for (const t of ws.tasks) if (t.type === 'depth' && !t.done) { t.need = Math.min(t.need, MH - 6); t.have = Math.min(t.have, t.need - 1); }
   ensureSpawns();
   revealFrom(HOME.x, HOME.y);
   updateHUD(); persist();
@@ -417,11 +420,11 @@ function freeSpot(minD, maxD) {
   }
   return null;
 }
-function spawnObj(type, extra = {}, minD = 5, maxD = 26) {
+function spawnObj(type, extra = {}, minD = 3, maxD = 16) {
   const p = freeSpot(minD, maxD);
   if (p) G.objs.set(p.y * G.W + p.x, { type, ...extra });
 }
-function spawnCreature(def, role, minD = 8, maxD = 30) {
+function spawnCreature(def, role, minD = 6, maxD = 20) {
   const p = freeSpot(minD, maxD);
   if (!p) return;
   // creatures hide inside the dirt; they only come out into tunnels you dig
@@ -519,11 +522,11 @@ function ensureSpawns() {
   if (!G.ambientDone) {
     G.ambientDone = true;
     for (let i = 0; i < wd.ambient.hostile; i++) spawnCreature(pick(wd.hostiles), 'hostile');
-    for (let i = 0; i < wd.ambient.friend; i++) { const f = wd.friends[i % wd.friends.length]; spawnCreature(f, f.role, 5, 35); }
+    for (let i = 0; i < wd.ambient.friend; i++) { const f = wd.friends[i % wd.friends.length]; spawnCreature(f, f.role, 4, 30); }
     for (let i = 0; i < wd.ambient.stones; i++) spawnObj('stone', {}, 6, 40);
     for (let i = 0; i < wd.ambient.chests; i++) spawnObj('chest', {}, 6, 60);
     for (let i = 0; i < wd.ambient.snacks; i++) spawnObj('snack', {}, 3, 50);
-    for (let i = 0; i < 8; i++) { const it = pick(wd.items); spawnObj('item', { id: it.id, e: it.e }, 3, 60); }
+    for (let i = 0; i < 5; i++) { const it = pick(wd.items); spawnObj('item', { id: it.id, e: it.e }, 3, 40); }
   }
   for (const t of ws.tasks || []) {
     if (t.done) continue;
@@ -544,10 +547,10 @@ function ensureSpawns() {
         for (let i = have; i < want; i++) spawnObj('stone');
         break;
       }
-      case 'clue': if (!countObjs(o => o.type === 'clue')) spawnObj('clue', {}, 6, 20); break;
+      case 'clue': if (!countObjs(o => o.type === 'clue')) spawnObj('clue', {}, 4, 13); break;
       case 'chest': if (!countObjs(o => o.type === 'chest')) spawnObj('chest'); break;
       case 'friend': if (!G.cr.some(c => c.role !== 'hostile' && !c.met)) { const f = pick(wd.friends.filter(f => f.role === 'helper')); spawnCreature(f, f.role, 5, 18); } break;
-      case 'boss': if (!countObjs(o => o.type === 'gate')) spawnObj('gate', {}, 8, 22); break;
+      case 'boss': if (!countObjs(o => o.type === 'gate')) spawnObj('gate', {}, 6, 15); break;
     }
   }
 }
@@ -821,15 +824,16 @@ function giveAcc(id, title, line) {
   });
 }
 
-function askRiddle(src, onDone) {
+function askRiddle(src, onDone, avoid = -1) {
   const wd = G.wd;
   const used = S.usedRiddles[G.w] = S.usedRiddles[G.w] || [];
   // riddles are listed easiest -> hardest, so always serve the next unsolved one;
   // once every riddle is solved, keep repeating the hardest half
   const n = wd.riddles.length;
-  let idx = wd.riddles.findIndex((_, i) => !used.includes(i));
-  if (idx < 0) idx = randi(Math.floor(n / 2), n - 1);
+  let idx = wd.riddles.findIndex((_, i) => !used.includes(i) && i !== avoid);
+  if (idx < 0) idx = pick([...Array(n).keys()].slice(Math.floor(n / 2)).filter(i => i !== avoid));
   const r = wd.riddles[idx];
+  if (src.who) src.who.lastRiddle = idx;
   const stars = Math.min(5, G.w + 1 + Math.floor((idx / n) * 2));
   showModal({
     icon: src.icon, title: src.title,
@@ -900,8 +904,10 @@ function meetCreature(c) {
     }
     updateHUD(); persist();
   } else if (c.role === 'riddler') {
-    if (c.done) return showModal({ icon: d.e, title: d.name, body: '<div class="speech">"You already solved my riddle. Clever, clever hamster!"</div>' });
-    askRiddle({ icon: d.e, title: d.name, speech: pick(d.lines) }, ok => { if (ok) { c.done = true; riddleSolved(); } });
+    // a new riddle every time you talk to them
+    const speech = c.asked ? 'Back for more? Here\'s a brand new riddle!' : pick(d.lines);
+    c.asked = true;
+    askRiddle({ icon: d.e, title: d.name, speech, who: c }, ok => { if (ok) riddleSolved(); }, c.lastRiddle ?? -1);
   }
 }
 
@@ -988,8 +994,10 @@ function startBattle(c, boss = false) {
   keys.length = 0;
   if (!boss) Sound.play('battle');
   const d = boss ? G.wd.boss : c.def;
+  // regular creatures are a bit tougher than their base stats (and give a bit more XP)
+  const hp = boss ? d.hp : Math.round(d.hp * 1.35);
   B = {
-    c, boss, d, name: d.name, hp: d.hp, max: d.hp, atk: d.atk, xp: d.xp,
+    c, boss, d, name: d.name, hp, max: hp, atk: boss ? d.atk : d.atk * 1.2, xp: boss ? d.xp : Math.round(d.xp * 1.15),
     pep: boss ? 5 : 3, block: false, dodge: false, sense: false, turn: 0, tele: false, phase: 0,
     busy: false, over: false, t: 0, meLunge: 0, foeLunge: 0, meHurt: 0, foeHurt: 0,
   };
@@ -1388,7 +1396,7 @@ function render(dt) {
   const y0 = Math.max(3, Math.floor(cy / T)), y1 = Math.min(G.H - 1, Math.ceil((cy + ch) / T));
   // dirt base
   for (let y = y0; y <= y1; y++) {
-    const band = c.dirt[y < 30 ? 0 : y < 65 ? 1 : 2];
+    const band = c.dirt[y < 17 ? 0 : y < 34 ? 1 : 2];
     ctx.fillStyle = band;
     ctx.fillRect(x0 * T, y * T, (x1 - x0 + 1) * T, T + 1);
   }
@@ -1551,7 +1559,7 @@ function drawSky(ctx, T, cx, cw, skyTop) {
   }
   for (const d of DECOR[w]) {
     const s = T * d.s;
-    drawEmoji(ctx, d.e, (d.x + 0.5) * T, d.sky ? skyTop + T * 1.2 : gy - s * 0.42, s);
+    drawEmoji(ctx, d.e, (d.x * G.W / 30 + 0.5) * T, d.sky ? skyTop + T * 1.2 : gy - s * 0.42, s);
   }
   void wd; void cx; void cw;
 }
