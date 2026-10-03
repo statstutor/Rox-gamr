@@ -346,6 +346,7 @@ function enterWorld(w) {
   const ws = S.worlds[w];
   if (!ws.tasks) ws.tasks = makeTasks(w, ws.wave);
   ensureSpawns();
+  revealFrom(HOME.x, HOME.y);
   updateHUD(); persist();
   if (!ws.intro) { ws.intro = true; persist(); worldIntro(w); }
 }
@@ -378,7 +379,7 @@ function makeGame(w) {
   }
   map[HOME.y * W + HOME.x] = OPEN;
   return {
-    w, wd, W, H, map, objs: new Map(), cr: [], parts: [], t: 0, T: 48, cw: 0, ch: 0,
+    w, wd, W, H, map, seen: new Uint8Array(W * H), objs: new Map(), cr: [], parts: [], t: 0, T: 48, cw: 0, ch: 0,
     ham: { x: HOME.x, y: HOME.y, tx: HOME.x, ty: HOME.y, mt: 0, mdur: 0, moving: false, digging: false, dt: 0, ddur: 0, tilt: 0 },
     cam: null, sniff: null, sniffCd: 0, regen: 0, bumpCd: 0, saveT: 0, ambientDone: false,
   };
@@ -386,6 +387,20 @@ function makeGame(w) {
 
 const tileAt = (x, y) => (x < 0 || y < 0 || x >= G.W || y >= G.H) ? STONE : G.map[y * G.W + x];
 const isOpen = (x, y) => tileAt(x, y) === OPEN;
+const isSeen = (x, y) => x >= 0 && y >= 0 && x < G.W && y < G.H && G.seen[y * G.W + x] === 1;
+const seenOpen = (x, y) => isOpen(x, y) && isSeen(x, y);
+
+// Reveal every open tile connected to the hamster (so breaking into a cave shows the whole cave).
+function revealFrom(x, y) {
+  const stack = [[x, y]];
+  while (stack.length) {
+    const [cx, cy] = stack.pop();
+    const k = cy * G.W + cx;
+    if (G.seen[k] || !isOpen(cx, cy)) continue;
+    G.seen[k] = 1;
+    stack.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
+  }
+}
 const crAt = (x, y) => G.cr.find(c => c.x === x && c.y === y);
 const countObjs = f => { let n = 0; for (const o of G.objs.values()) if (f(o)) n++; return n; };
 
@@ -491,7 +506,7 @@ function checkWave() {
     ensureSpawns(); updateHUD(); persist();
     showModal({
       icon: '🌀', title: 'All 3 waves complete!',
-      body: `<p><b>RUMBLE... RUMBLE...</b></p><p>A swirling <b>Boss Lair 🌀</b> has opened somewhere underground!</p><p>Find it, solve the mystery, and get ready for a <b>BOSS BATTLE</b>! 🥋</p>`,
+      body: `<p><b>RUMBLE... RUMBLE...</b></p><p>A swirling <b>Boss Lair 🌀</b> has opened somewhere underground!</p><p>It's buried deep in the dirt. Use your 👃 <b>Sniff</b> to find it, solve the mystery, and get ready for a <b>BOSS BATTLE</b>! 🥋</p>`,
       buttons: [{ label: 'Let\'s go!' }],
     });
   } else {
@@ -661,6 +676,7 @@ function update(dt) {
       if (h.dt >= h.ddur) {
         h.digging = false;
         G.map[h.ty * G.W + h.tx] = OPEN;
+        revealFrom(h.tx, h.ty);
         S.record.dug++;
         Sound.sfx('dig'); dirtBits(h.tx, h.ty, 6);
         startMove(h.tx, h.ty, 0.12);
@@ -698,6 +714,7 @@ function startMove(nx, ny, dur) { const h = G.ham; h.moving = true; h.mt = 0; h.
 
 function arrive() {
   const h = G.ham, ws = S.worlds[G.w];
+  revealFrom(h.x, h.y);
   const depth = h.y - HOME.y;
   if (depth > ws.maxDepth) ws.maxDepth = depth;
   progress('depth', depth);
@@ -815,17 +832,23 @@ function giveAcc(id, title, line) {
 function askRiddle(src, onDone) {
   const wd = G.wd;
   const used = S.usedRiddles[G.w] = S.usedRiddles[G.w] || [];
-  let avail = wd.riddles.map((_, i) => i).filter(i => !used.includes(i));
-  if (!avail.length) { used.length = 0; avail = wd.riddles.map((_, i) => i); }
-  const idx = pick(avail), r = wd.riddles[idx];
+  // riddles are listed easiest -> hardest, so always serve the next unsolved one;
+  // once every riddle is solved, keep repeating the hardest half
+  const n = wd.riddles.length;
+  let idx = wd.riddles.findIndex((_, i) => !used.includes(i));
+  if (idx < 0) idx = randi(Math.floor(n / 2), n - 1);
+  const r = wd.riddles[idx];
+  const stars = Math.min(5, G.w + 1 + Math.floor((idx / n) * 2));
   showModal({
     icon: src.icon, title: src.title,
-    body: `${src.speech ? `<div class="speech">${esc(src.speech)}</div>` : ''}<p><b>${esc(r.q)}</b></p>`,
+    body: `${src.speech ? `<div class="speech">${esc(src.speech)}</div>` : ''}
+      <p class="tiny">Riddle ${Math.min(idx + 1, n)} of ${n} · Difficulty ${'⭐'.repeat(stars)}</p><p><b>${esc(r.q)}</b></p>`,
     choices: shuffle([r.a, ...r.w]).map(opt => ({
       label: esc(opt),
       onClick: () => {
         if (opt === r.a) {
-          used.push(idx); S.record.riddles++;
+          if (!used.includes(idx)) used.push(idx);
+          S.record.riddles++;
           Sound.sfx('correct');
           showModal({ icon: '🎉', title: 'Correct!', body: `<p>"<b>${esc(r.a)}</b>" is right! You're one smart hamster!</p>` });
           onDone(true);
@@ -1199,6 +1222,7 @@ async function loseBattle() {
   S.hp = maxHp();
   const h = G.ham;
   h.x = h.tx = HOME.x; h.y = h.ty = HOME.y; h.moving = h.digging = false;
+  revealFrom(h.x, h.y);
   if (b.c) b.c.stun = 4;
   const helper = G.wd.friends.find(f => f.role === 'helper');
   if (b.boss) {
@@ -1372,15 +1396,18 @@ function render(dt) {
   ctx.fillStyle = c.tunnel;
   const r = T * 0.36, ins = T * 0.02;
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-    if (G.map[y * G.W + x] !== OPEN) continue;
+    if (!seenOpen(x, y)) continue;
     const px = x * T, py = y * T;
     ctx.beginPath(); ctx.roundRect(px + ins, py + ins, T - ins * 2, T - ins * 2, r); ctx.fill();
-    if (isOpen(x + 1, y)) ctx.fillRect(px + T / 2, py + ins, T, T - ins * 2);
-    if (isOpen(x, y + 1)) ctx.fillRect(px + ins, py + T / 2, T - ins * 2, T);
+    if (seenOpen(x + 1, y)) ctx.fillRect(px + T / 2, py + ins, T, T - ins * 2);
+    if (seenOpen(x, y + 1)) ctx.fillRect(px + ins, py + T / 2, T - ins * 2, T);
   }
   // specks, stones, grass
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-    const t = G.map[y * G.W + x], px = x * T, py = y * T, hs = hash(x, y);
+    const raw = G.map[y * G.W + x], px = x * T, py = y * T, hs = hash(x, y);
+    const near = isSeen(x, y) || isSeen(x + 1, y) || isSeen(x - 1, y) || isSeen(x, y + 1) || isSeen(x, y - 1);
+    // unexplored ground is just dirt: hidden caves look like dirt, rocks show once you're beside them
+    const t = (raw === OPEN && !G.seen[y * G.W + x]) || (raw === STONE && !near && y < G.H - 1 && x > 0 && x < G.W - 1) ? DIRT : raw;
     if (t === DIRT) {
       ctx.fillStyle = c.speck;
       if (hs % 3 === 0) { ctx.beginPath(); ctx.arc(px + (hs % 7 + 2) / 11 * T, py + ((hs >> 3) % 7 + 2) / 11 * T, T * 0.06, 0, 7); ctx.fill(); }
@@ -1403,8 +1430,8 @@ function render(dt) {
   for (const [k, o] of G.objs) {
     const x = k % G.W, y = Math.floor(k / G.W);
     if (x < x0 - 1 || x > x1 + 1 || y < y0 - 1 || y > y1 + 1) continue;
+    if (!seenOpen(x, y)) continue; // buried things stay secret until you dig to them
     const px = (x + 0.5) * T, py = (y + 0.5) * T;
-    const hidden = G.map[k] === DIRT;
     const em = o.type === 'item' ? o.e : { snack: '🍓', chest: '🎁', stone: '🗿', clue: '📜', gate: '🌀' }[o.type];
     if (o.type === 'gate') {
       ctx.save(); ctx.translate(px, py); ctx.rotate(G.t * 3);
@@ -1415,15 +1442,13 @@ function render(dt) {
       ctx.restore();
       continue;
     }
-    if (hidden) {
-      drawEmoji(ctx, em, px, py, T * 0.55, 0.5);
-      if ((G.t * 1.5 + (k % 7)) % 3 < 0.35) drawEmoji(ctx, '✨', px + T * 0.25, py - T * 0.25, T * 0.35);
-    } else drawEmoji(ctx, em, px, py + Math.sin(G.t * 3 + k) * 3, T * 0.7);
+    drawEmoji(ctx, em, px, py + Math.sin(G.t * 3 + k) * 3, T * 0.7);
   }
   // creatures
   for (const cr of G.cr) {
     cr.px += (cr.x - cr.px) * Math.min(1, dt * 10); cr.py += (cr.y - cr.py) * Math.min(1, dt * 10);
     if (cr.x < x0 - 1 || cr.x > x1 + 1 || cr.y < y0 - 1 || cr.y > y1 + 1) continue;
+    if (!isSeen(cr.x, cr.y)) continue;
     const px = (cr.px + 0.5) * T, py = (cr.py + 0.5) * T + Math.sin(G.t * 5 + cr.x) * 2;
     ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(px, (cr.py + 0.88) * T, T * 0.28, T * 0.07, 0, 0, 7); ctx.fill();
     if (cr.role === 'mystery') ctx.filter = 'grayscale(1) brightness(0.8)';
