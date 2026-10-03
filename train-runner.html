@@ -8,7 +8,7 @@
   html, body { margin: 0; height: 100%; background: #0d0b1a; overflow: hidden; font-family: system-ui, sans-serif; color: #fff; touch-action: none; user-select: none; -webkit-user-select: none; }
   #wrap { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
   #game { position: relative; }
-  canvas { display: block; width: 100%; height: 100%; }
+  canvas { display: block; width: 100%; height: 100%; outline: none; cursor: pointer; }
   .btn { position: absolute; top: 10px; width: 44px; height: 44px; border-radius: 10px; border: 2px solid rgba(255,255,255,.6); background: rgba(0,0,0,.35); color: #fff; font-size: 20px; cursor: pointer; padding: 0; }
   .btn:hover { background: rgba(255,255,255,.15); }
   #pauseBtn { right: 10px; }
@@ -18,7 +18,7 @@
 <body>
 <div id="wrap">
   <div id="game">
-    <canvas id="c"></canvas>
+    <canvas id="c" tabindex="0"></canvas>
     <button id="soundBtn" class="btn" type="button" tabindex="-1" title="Sound (M)">🔊</button>
     <button id="pauseBtn" class="btn" type="button" tabindex="-1" title="Pause (P / Esc)">⏸</button>
   </div>
@@ -122,20 +122,22 @@
 
   // ---------- Update ----------
   function startGame() {
-    initAudio();
-    if (actx) actx.resume();
     reset();
     state = "playing";
-    startMusic();
+    try {
+      initAudio();
+      if (actx) actx.resume().catch(() => {});
+      startMusic();
+    } catch (e) { actx = null; }
   }
 
   function togglePause() {
     if (state === "playing" && !player.dead) {
       state = "paused";
-      if (actx) actx.suspend();
+      if (actx) actx.suspend().catch(() => {});
     } else if (state === "paused") {
       state = "playing";
-      if (actx) actx.resume();
+      if (actx) actx.resume().catch(() => {});
     }
     pauseBtn.textContent = state === "paused" ? "▶" : "⏸";
   }
@@ -658,7 +660,11 @@
     if (actx) return;
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
-    actx = new AC();
+    try { buildAudio(new AC()); } catch (e) { actx = null; }
+  }
+
+  function buildAudio(ac) {
+    actx = ac;
     master = actx.createGain(); master.gain.value = muted ? 0 : 0.9;
     const comp = actx.createDynamicsCompressor();
     master.connect(comp).connect(actx.destination);
@@ -673,7 +679,7 @@
     muted = !muted;
     save("trainRunnerMuted", muted ? "1" : "0");
     soundBtn.textContent = muted ? "🔇" : "🔊";
-    if (master) master.gain.setTargetAtTime(muted ? 0 : 0.9, actx.currentTime, 0.02);
+    if (master) try { master.gain.setTargetAtTime(muted ? 0 : 0.9, actx.currentTime, 0.02); } catch (e) {}
   }
 
   const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
@@ -765,6 +771,9 @@
 
   function scheduleMusic() {
     if (!actx) return;
+    try { scheduleSteps(); } catch (e) { stopMusic(); }
+  }
+  function scheduleSteps() {
     if (music.next < actx.currentTime - 0.1) music.next = actx.currentTime + 0.02;
     while (music.next < actx.currentTime + 0.15) {
       playStep(music.step, music.next);
@@ -783,16 +792,22 @@
   }
   function stopMusic() { clearInterval(music.timer); music.timer = null; }
 
-  function sfxJump() { if (actx) tone("square", 330, actx.currentTime, 0.14, 0.12, sfxGain, 2500, 720); }
+  function sfxJump() { if (actx) try { tone("square", 330, actx.currentTime, 0.14, 0.12, sfxGain, 2500, 720); } catch (e) {} }
   function sfxCrash() {
     if (!actx) return;
+    try { crashSound(); } catch (e) {}
+  }
+  function crashSound() {
     const t = actx.currentTime;
     noise(t, 0.5, 0.7, "lowpass", 1400, sfxGain);
     tone("sawtooth", 220, t, 0.6, 0.25, sfxGain, 1200, 40);
   }
-  function sfxFall() { if (actx) tone("triangle", 700, actx.currentTime, 0.9, 0.25, sfxGain, 0, 70); }
+  function sfxFall() { if (actx) try { tone("triangle", 700, actx.currentTime, 0.9, 0.25, sfxGain, 0, 70); } catch (e) {} }
   function sfxMilestone() {
     if (!actx) return;
+    try { milestoneSound(); } catch (e) {}
+  }
+  function milestoneSound() {
     const t = actx.currentTime;
     tone("square", 880, t, 0.1, 0.1, sfxGain, 4000);
     tone("square", 1320, t + 0.09, 0.18, 0.1, sfxGain, 4000);
@@ -807,7 +822,7 @@
     else if (state === "playing") jumpBuffer = 0.12;
   }
 
-  addEventListener("keydown", e => {
+  document.addEventListener("keydown", e => {
     const k = e.code;
     if (JUMP_KEYS.includes(k) || DUCK_KEYS.includes(k)) e.preventDefault();
     if (k === "KeyP" || k === "Escape") { if (!e.repeat) togglePause(); return; }
@@ -815,13 +830,14 @@
     if (JUMP_KEYS.includes(k)) { keys.jump = true; if (!e.repeat) pressJump(); }
     if (DUCK_KEYS.includes(k)) keys.duckKey = true;
   });
-  addEventListener("keyup", e => {
+  document.addEventListener("keyup", e => {
     if (JUMP_KEYS.includes(e.code)) keys.jump = false;
     if (DUCK_KEYS.includes(e.code)) keys.duckKey = false;
   });
 
   canvas.addEventListener("pointerdown", e => {
     e.preventDefault();
+    try { canvas.focus({ preventScroll: true }); } catch (err) {}
     if (state !== "playing") { if (state === "paused") togglePause(); else pressJump(); return; }
     const r = canvas.getBoundingClientRect();
     if ((e.clientY - r.top) / r.height > 0.5) duckPointers.add(e.pointerId);
@@ -838,6 +854,7 @@
 
   // ---------- Main loop ----------
   reset();
+  try { canvas.focus({ preventScroll: true }); } catch (e) {}
   let last = performance.now();
   function frame(now) {
     const dt = Math.min(0.033, (now - last) / 1000);
