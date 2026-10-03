@@ -1,4 +1,4 @@
-// Hamster Tunnels - procedural music + sound effects (Web Audio, no files needed)
+// Dig, Hamster, Dig! - procedural music + sound effects (Web Audio, no files needed)
 'use strict';
 
 const Sound = (() => {

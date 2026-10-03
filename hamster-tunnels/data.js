@@ -1,4 +1,4 @@
-// Hamster Tunnels - game content
+// Dig, Hamster, Dig! - game content
 'use strict';
 
 const HAM_COLORS = {

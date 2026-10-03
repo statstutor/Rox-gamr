@@ -1,4 +1,4 @@
-// Hamster Tunnels - main game
+// Dig, Hamster, Dig! - main game
 'use strict';
 
 // ================= utils =================
@@ -162,7 +162,7 @@ $('#colorDone').addEventListener('click', () => {
   S.hp = maxHp();
   persist();
   show('menu');
-  toast(`Welcome to Hamster Tunnels, ${esc(displayName())}! 🎉`, 'good');
+  toast(`Welcome, ${esc(displayName())}! Let's dig! 🎉`, 'good');
 });
 
 // ---------- menu ----------
@@ -1545,7 +1545,7 @@ function frame(now) {
   last = now; gTime += dt;
   try {
     if (curScreen === 'game' && G) { update(dt); render(dt); }
-    else if (curScreen === 'auth') drawPreview('#cvAuth', { color: AUTH_COLORS[Math.floor(gTime / 1.5) % AUTH_COLORS.length], equipped: { head: 'bow' } }, 130);
+    else if (curScreen === 'auth') drawPreview('#cvAuth', { color: AUTH_COLORS[Math.floor(gTime / 1.5) % AUTH_COLORS.length], equipped: {} }, 130);
     else if (curScreen === 'color') drawPreview('#cvColor', { color: pickColor }, 170);
     else if (curScreen === 'menu' && S) drawPreview('#cvMenu', { color: S.color, equipped: S.equipped, tilt: Math.sin(gTime * 2) * 0.06 }, 170);
     else if (curScreen === 'dress' && S) drawPreview('#cvDress', { color: S.color, equipped: S.equipped, karate: $('#dressKarate').checked, belt: BELTS[Math.max(0, S.beaten.lastIndexOf(true))] }, 180);
