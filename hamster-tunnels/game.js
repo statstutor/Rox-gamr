@@ -43,14 +43,16 @@ async function hashPw(pw, salt, algo) {
   h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
   return 'fb' + (h1 >>> 0).toString(16) + (h2 >>> 0).toString(16);
 }
-// No two accounts may share a password: hash the new one with each account's salt and compare.
-async function passwordInUse(pw) {
-  for (const rec of Object.values(DB.users)) {
+// No two accounts may share a password, so a password identifies exactly one account.
+// Hash the password with each account's salt and compare; returns that account's key or null.
+async function accountForPassword(pw) {
+  for (const [key, rec] of Object.entries(DB.users)) {
     if (rec.algo === 'sha' && !canSha()) continue;
-    if (await hashPw(pw, rec.salt, rec.algo) === rec.hash) return true;
+    if (await hashPw(pw, rec.salt, rec.algo) === rec.hash) return key;
   }
-  return false;
+  return null;
 }
+const passwordInUse = async pw => (await accountForPassword(pw)) !== null;
 const canSha = () => !!(window.crypto && crypto.subtle && window.isSecureContext !== false);
 
 function newSave(color) {
@@ -123,9 +125,9 @@ $('#authForm').addEventListener('submit', async e => {
   const pw = $('#authPass').value;
   const key = name.toLowerCase();
   const msg = t => { $('#authMsg').textContent = t; Sound.sfx('wrong'); };
-  if (!/^[A-Za-z0-9_ ]{3,16}$/.test(name)) return msg('Usernames need 3-16 letters or numbers.');
   if (pw.length < 4) return msg('Passwords need at least 4 characters.');
   if (authMode === 'signup') {
+    if (!/^[A-Za-z0-9_ ]{3,16}$/.test(name)) return msg('Usernames need 3-16 letters or numbers.');
     if (pw !== $('#authPass2').value) return msg('The two passwords don\'t match!');
     if (DB.users[key]) return msg('That username is taken. Try another!');
     if (await passwordInUse(pw)) return msg('Someone already uses that password. Please pick a different one!');
@@ -137,11 +139,11 @@ $('#authForm').addEventListener('submit', async e => {
     Sound.sfx('correct');
     startColorPick();
   } else {
-    const rec = DB.users[key];
-    if (!rec) return msg('No hamster with that name yet. Make a New Account!');
-    if (rec.algo === 'sha' && !canSha()) return msg('This browser can\'t check that password here.');
-    if (await hashPw(pw, rec.salt, rec.algo) !== rec.hash) return msg('Oops! Wrong password.');
-    USER = key; S = rec.save;
+    // Every password is unique, so the password alone finds your account.
+    const found = await accountForPassword(pw);
+    if (!found) return msg('Oops! That password doesn\'t match any hamster. Try again, or make a New Account!');
+    const rec = DB.users[found];
+    USER = found; S = rec.save;
     Sound.sfx('correct');
     if (!S) startColorPick();
     else { if (S.hp == null) S.hp = maxHp(); syncSecretSkin(); show('menu'); toast(`Welcome back, ${esc(rec.name)}! 🐹`, 'good'); }
@@ -233,7 +235,7 @@ $('#btnRename').addEventListener('click', () => renameDialog());
 function renameDialog(prefill = displayName(), error = '') {
   showModal({
     icon: '✏️', title: 'Change your name',
-    body: `<p>Pick a new name for your hamster. You'll use it to log in next time.</p>
+    body: `<p>Pick a new name for your hamster. Your password stays the same.</p>
       <input id="renameInput" maxlength="16" value="${esc(prefill)}" autocomplete="off">
       ${error ? `<div class="msg">${esc(error)}</div>` : ''}`,
     buttons: [
