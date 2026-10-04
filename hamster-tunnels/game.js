@@ -1155,9 +1155,10 @@ function startBattle(c, boss = false) {
   if (!boss) Sound.play('battle');
   const d = boss ? G.wd.boss : c.def;
   // regular creatures are a bit tougher than their base stats (and give a bit more XP)
-  const hp = boss ? d.hp : Math.round(d.hp * 1.35);
+  // regular creatures and bosses are both a bit tougher than their base stats
+  const hp = Math.round(d.hp * (boss ? 1.25 : 1.35));
   B = {
-    c, boss, d, name: d.name, hp, max: hp, atk: boss ? d.atk : d.atk * 1.2, xp: boss ? d.xp : Math.round(d.xp * 1.15),
+    c, boss, d, name: d.name, hp, max: hp, atk: d.atk * (boss ? 1.15 : 1.2), xp: boss ? d.xp : Math.round(d.xp * 1.15),
     pep: boss ? 5 : 3, block: false, dodge: false, sense: false, turn: 0, tele: false, phase: 0,
     busy: false, over: false, t: 0, meLunge: 0, foeLunge: 0, meHurt: 0, foeHurt: 0,
   };
