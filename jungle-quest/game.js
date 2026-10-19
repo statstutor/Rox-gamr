@@ -495,7 +495,7 @@ function view(room, playerId) {
     diff: room.diff,
     minPlayers: MIN_PLAYERS,
     maxPlayers: MAX_PLAYERS,
-    players: room.players.map(({ id, name, avatar, hp, maxHp, potions, connected }) => ({ id, name, avatar, hp, maxHp, potions, connected })),
+    players: room.players.map(({ id, name, avatar, hp, maxHp, potions, connected, bot }) => ({ id, name, avatar, hp, maxHp, potions, connected, bot: !!bot })),
     unlocked: room.unlocked,
     levels: LEVELS.map(({ id, name, emoji, blurb, theme }) => ({ id, name, emoji, blurb, theme })),
     level: level && { id: level.id, name: level.name, emoji: level.emoji, theme: level.theme },

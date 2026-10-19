@@ -48,6 +48,7 @@ Unlocked levels are remembered in each player's browser, so whoever hosts next t
 ## Claude page version
 
 `node build-artifact.js <file.html>` bundles the game into one page that can be published on claude.ai.
-That version also has **Play on this device** (pass one phone or computer around), and its online mode
+That version also has **Play solo with AI teammates** (3 to 8 computer explorers who fight, lead and search
+for clues, and share their code hints) and **Play on this device** (pass one phone or computer around). Its online mode
 uses the page's built-in shared storage and live room instead of `server.js`: the host's page runs the
 game, and other players need a Claude account and access to the page.

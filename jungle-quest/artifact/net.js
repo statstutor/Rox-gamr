@@ -1,6 +1,6 @@
 'use strict';
 // Networking for the claude.ai page version (built by build-artifact.js).
-// - "Play on this device": the game runs right here in the page.
+// - "Play on this device" and solo with AI teammates: the game runs right here in the page.
 // - Online: the host's page runs the game and saves it to the page's shared
 //   database; other players read it from there and send their moves through
 //   the page's live room (their "presence").
@@ -51,6 +51,52 @@
     return { code: room.code, playerId: player.id, local: true };
   }
 
+  // ---------- Solo games with AI teammates ----------
+
+  const BOT_NAMES = ['Zara', 'Bolt', 'Pip', 'Juno', 'Rio', 'Nova', 'Tiko', 'Moss'];
+
+  function createSolo({ name, avatar, bots, unlocked }) {
+    const count = Math.max(game.MIN_PLAYERS - 1, Math.min(game.MAX_PLAYERS - 1, Number(bots) || 3));
+    const { room, player } = game.createRoom({ name, avatar, unlocked });
+    const avatars = game.AVATARS.filter((a) => a !== player.avatar).sort(() => Math.random() - 0.5);
+    BOT_NAMES.slice(0, count).forEach((botName, i) => {
+      game.joinRoom({ code: room.code, name: botName, avatar: avatars[i] }).player.bot = true;
+    });
+    room.players.forEach((p) => game.setConnected(room, p.id, true));
+    game.act(room, player.id, { type: 'start' });
+    room.feed = [];
+    room.solo = true;
+    return { code: room.code, playerId: player.id, local: true, solo: true };
+  }
+
+  // What one AI teammate wants to do next, and how long to wait before doing it.
+  function botStep(room) {
+    const bots = room.players.filter((p) => p.bot);
+    if (room.phase === 'map') {
+      const leader = room.players[room.leader % room.players.length];
+      if (!leader.bot) return null;
+      const spot = room.spots.find((x) => !x.done && !x.boss) || room.spots.find((x) => !x.done);
+      return { delay: 1800, id: leader.id, action: { type: 'go', spot: spot.id } };
+    }
+    if (room.phase === 'fight') {
+      const bot = bots.find((b) => b.hp > 0 && !room.enc.choices[b.id]);
+      if (!bot) return null;
+      const hurt = room.players.filter((p) => p.hp < 10).sort((a, b) => a.hp - b.hp)[0];
+      const roll = Math.random();
+      const move = hurt && bot.potions > 0 ? { move: 'heal', target: hurt.id }
+        : roll < 0.65 ? { move: 'attack' } : roll < 0.85 ? { move: 'power' } : { move: 'defend' };
+      return { delay: 350, id: bot.id, action: { type: 'fight', ...move } };
+    }
+    if (room.phase === 'hunt' && room.enc.stage === 'search') {
+      const awake = bots.filter((b) => b.hp > 0);
+      const open = room.enc.places.map((p, i) => (p.searchedBy ? -1 : i)).filter((i) => i >= 0);
+      if (!awake.length || !open.length) return null;
+      return { delay: 3000, id: awake[Math.floor(Math.random() * awake.length)].id,
+        action: { type: 'search', index: open[Math.floor(Math.random() * open.length)] } };
+    }
+    return null;
+  }
+
   function actLocal(s, action) {
     const room = game.rooms.get(s.code);
     if (!room) throw new Error('That game has ended.');
@@ -59,7 +105,7 @@
     if (action.type === 'go') as = room.players[room.leader % room.players.length].id;
     game.act(room, as, action);
     // In a fight, hand the device to the next explorer who still needs to choose.
-    if (action.type === 'fight' && room.phase === 'fight') {
+    if (action.type === 'fight' && room.phase === 'fight' && !room.solo) {
       const next = room.players.find((p) => p.hp > 0 && !room.enc.choices[p.id]);
       if (next) current.set(s.code, next.id);
     }
@@ -71,14 +117,30 @@
     const room = game.rooms.get(s.code);
     if (!room) { setTimeout(onGone); return () => {}; }
     current.set(s.code, s.playerId);
+    let timer = null;
     const send = () => {
       const v = game.view(room, current.get(s.code));
       v.hostId = v.you; // everyone shares the host buttons on one device
+      if (room.solo && v.enc && v.enc.type === 'code') {
+        v.enc.teamHints = room.players.filter((p) => p.bot)
+          .flatMap((p) => (room.enc.hints[p.id] || []).map((h) => `${p.avatar} ${p.name}: "${h}"`));
+      }
       onState(v);
+      if (room.solo && !timer) {
+        const step = botStep(room);
+        if (step) {
+          timer = setTimeout(() => {
+            timer = null;
+            const again = botStep(room); // the game may have moved on while we waited
+            if (again) { try { game.act(room, again.id, again.action); } catch { /* skip */ } }
+            send();
+          }, step.delay);
+        }
+      }
     };
     listeners.set(s.code, send);
     send();
-    return () => listeners.delete(s.code);
+    return () => { listeners.delete(s.code); clearTimeout(timer); timer = null; };
   }
 
   // ---------- Online games ----------
@@ -231,6 +293,7 @@
   window.JQ_NET = {
     features,
     createLocal,
+    createSolo,
     create,
     join,
     async act(s, action) {

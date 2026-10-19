@@ -115,6 +115,7 @@ document.addEventListener('click', (e) => {
     case 'avatar': ui.avatar = v; render(); break;
     case 'create': enter(net.create, { name: ui.name, avatar: ui.avatar, unlocked: store.get('jq-unlocked', 1) }); break;
     case 'join': enter(net.join, { code: ui.joinCode, name: ui.name, avatar: ui.avatar }); break;
+    case 'solo': enter(net.createSolo, { name: ui.name, avatar: ui.avatar, bots: Number(v), unlocked: store.get('jq-unlocked', 1) }); break;
     case 'local': enter(net.createLocal, { names: ui.localNames.split(/[\n,]/), unlocked: store.get('jq-unlocked', 1) }); break;
     case 'playAs': session = { ...session, playerId: v }; sessionSet(session); connect(); break;
     case 'leave':
@@ -161,6 +162,11 @@ function homeScreen() {
       <div class="row"><input id="joincode" maxlength="4" placeholder="ABCD" value="${esc(ui.joinCode)}" style="width:110px;text-transform:uppercase">
         ${uiBtn('Join game', 'join', '', 'ghost')}</div>`
     : `<p class="muted">${esc(f.onlineNote || 'Connecting...')}</p>`;
+  const solo = f.local
+    ? `<div class="card"><h3>🤖 Play solo with AI teammates</h3>
+        <p class="muted">You play your explorer. AI teammates fight, lead and search for clues with you. How many AI teammates?</p>
+        <div class="row">${[3, 4, 5, 6, 7, 8].map((n) => uiBtn(`${n} 🤖`, 'solo', String(n), 'ghost')).join('')}</div></div>`
+    : '';
   const local = f.local
     ? `<div class="card"><h3>Or play together on this device</h3>
         <p class="muted">Pass one phone or computer around. Type 4 to 9 names, one per line.</p>
@@ -175,15 +181,16 @@ function homeScreen() {
     <input id="name" maxlength="16" placeholder="Your name" value="${esc(ui.name)}" style="width:100%">
     <div class="avatars">${AVATARS.map((a) => uiBtn(a, 'avatar', a, a === ui.avatar ? 'on' : '')).join('')}</div>
   </div>
+  ${solo}
   <div class="card">
-    <h3>2. Start or join an online game</h3>
+    <h3>Start or join an online game</h3>
     ${online}
   </div>
   ${local}`;
 }
 
 function header() {
-  const switcher = session.local
+  const switcher = session.local && !session.solo
     ? `<div class="card"><div class="tiny">Whose turn is it? Tap your name, then play.</div><div class="row" style="margin-top:6px">${state.players.map((p) =>
         uiBtn(`${p.avatar} ${esc(p.name)}`, 'playAs', p.id, p.id === state.you ? 'small' : 'ghost small')).join('')}</div></div>`
     : '';
@@ -207,7 +214,7 @@ function playersPanel() {
       state.phase === 'fight' && chosen.includes(p.id) ? '✅' : ''].join('');
     return `<div class="player ${p.id === state.you ? 'me' : ''} ${p.connected ? '' : 'off'} ${p.hp <= 0 ? 'ko' : ''}">
       <span class="tag">${tags}</span>
-      <div class="name">${p.avatar} ${esc(p.name)}</div>
+      <div class="name">${p.avatar} ${esc(p.name)}${p.bot ? ' <span class="tiny">🤖 AI</span>' : ''}</div>
       ${state.phase === 'lobby' ? '' : `${hpBar(p.hp, p.maxHp)}<div class="tiny">❤️ ${p.hp}/${p.maxHp} · 🧪 ${p.potions}${p.hp <= 0 ? ' · 😵 KO' : ''}${p.connected ? '' : ' · offline'}</div>`}
     </div>`;
   }).join('');
@@ -332,6 +339,7 @@ function code() {
   <div class="card"><h3>🤫 Only you can see this:</h3>
     ${e.hints.length ? e.hints.map((h) => `<div class="hint">${esc(h)}</div>`).join('<br>') : '<p class="muted">You don\'t remember anything — ask your teammates!</p>'}
   </div>
+  ${e.teamHints ? `<div class="card"><h3>🤖 Your AI teammates say:</h3>${e.teamHints.map((t) => `<p>${esc(t)}</p>`).join('')}</div>` : ''}
   <div class="card center"><h3>The lock (${e.length} symbols)</h3>
     <p class="muted">Tap a slot, then tap a symbol. Everyone shares the same lock.</p>
     <div class="dial">${dial}</div><div class="symbols">${symbols}</div><br>
