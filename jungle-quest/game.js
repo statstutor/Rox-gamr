@@ -220,6 +220,13 @@ function startEncounter(room, spot) {
       ...base, type: 'riddle', index: 0, wrong: [],
       list: shuffle(def.riddles).slice(0, count).map((r) => ({ q: r.q, a: r.a, options: shuffle([r.a, ...r.wrong]) })),
     };
+  } else if (def.type === 'path') {
+    // The lost path works like riddles, but the forks come in order. Big teams face one more fork.
+    room.enc = {
+      ...base, type: 'riddle', variant: 'path', index: 0, wrong: [],
+      list: def.steps.slice(0, n >= 8 ? def.steps.length : def.steps.length - 1)
+        .map((r) => ({ q: r.q, a: r.a, options: shuffle([r.a, ...r.wrong]) })),
+    };
   } else if (def.type === 'hunt') {
     const traps = 1 + Math.floor((n - 2) / 2);
     const places = shuffle(def.places).slice(0, 12);
@@ -236,7 +243,7 @@ function startEncounter(room, spot) {
   } else if (def.type === 'code') {
     room.enc = { ...base, type: 'code', ...makeCode(room, def.symbols), attempts: 0, feedback: null };
   }
-  room.phase = def.type;
+  room.phase = room.enc.type;
 }
 
 // Each player only sees their own hints, so the team has to talk to crack it.
@@ -315,25 +322,45 @@ function maybeResolveRound(room) {
 function resolveRound(room) {
   const e = room.enc;
   const log = [];
+  const events = []; // what happened, step by step, for the cutscene
+  const who = (p) => ({ id: p.id, name: p.name, avatar: p.avatar });
+  const startHp = e.hp;
   const defending = new Set();
   const exposed = new Set();
 
   for (const p of room.players) {
     if (p.hp <= 0) continue;
     const c = e.choices[p.id];
-    if (!c) { if (p.connected) { defending.add(p.id); log.push(`🛡️ ${p.name} was too slow and just defends.`); } continue; }
+    if (!c) {
+      if (p.connected) {
+        defending.add(p.id);
+        log.push(`🛡️ ${p.name} was too slow and just defends.`);
+        events.push({ kind: 'defend', actor: who(p), slow: true });
+      }
+      continue;
+    }
     if (c.move === 'attack') {
       let d = rand(1, 6) + 2;
-      if (Math.random() < 0.1) { d *= 2; log.push(`💥 ${p.name} lands a CRITICAL hit for ${d}!`); } else log.push(`⚔️ ${p.name} hits for ${d}.`);
+      const crit = Math.random() < 0.1;
+      if (crit) { d *= 2; log.push(`💥 ${p.name} lands a CRITICAL hit for ${d}!`); } else log.push(`⚔️ ${p.name} hits for ${d}.`);
       e.hp -= d;
+      events.push({ kind: 'attack', actor: who(p), dmg: d, crit });
     } else if (c.move === 'power') {
       exposed.add(p.id);
-      if (Math.random() < 0.35) log.push(`💨 ${p.name} swings big... and misses!`);
-      else { const d = rand(2, 12) + 3; e.hp -= d; log.push(`🔨 ${p.name} smashes for ${d}!`); }
+      if (Math.random() < 0.35) {
+        log.push(`💨 ${p.name} swings big... and misses!`);
+        events.push({ kind: 'miss', actor: who(p) });
+      } else {
+        const d = rand(2, 12) + 3;
+        e.hp -= d;
+        log.push(`🔨 ${p.name} smashes for ${d}!`);
+        events.push({ kind: 'power', actor: who(p), dmg: d });
+      }
     } else if (c.move === 'defend') {
       defending.add(p.id);
       p.hp = Math.min(p.maxHp, p.hp + 2);
       log.push(`🛡️ ${p.name} defends (+2 ❤️).`);
+      events.push({ kind: 'defend', actor: who(p) });
     } else if (c.move === 'heal') {
       const t = getPlayer(room, c.target);
       if (p.potions > 0 && t) {
@@ -341,22 +368,29 @@ function resolveRound(room) {
         const wasOut = t.hp <= 0;
         t.hp = Math.min(t.maxHp, t.hp + 10);
         log.push(wasOut ? `✨ ${p.name} revives ${t.name}!` : `🧪 ${p.name} heals ${t === p ? 'themself' : t.name} (+10 ❤️).`);
+        events.push({ kind: 'heal', actor: who(p), target: who(t), revive: wasOut });
       }
     }
   }
 
   e.hp = Math.max(0, e.hp);
   e.choices = {};
+  const cutscene = (result) => {
+    room.cutsceneSeq = (room.cutsceneSeq || 0) + 1;
+    room.cutscene = { id: room.cutsceneSeq, name: e.name, emoji: e.emoji, maxHp: e.maxHp, startHp, events, result };
+  };
   if (e.hp === 0) {
+    cutscene('win');
     room.players.forEach((p) => { p.hp = p.hp <= 0 ? 10 : Math.min(p.maxHp, p.hp + 5); });
     finishSpot(room, `🎉 The team defeated ${e.emoji} ${e.name}! Everyone catches their breath (+5 ❤️).`);
     return;
   }
 
-  const hit = (p, dmg) => {
+  const hit = (p, dmg, special) => {
     if (defending.has(p.id)) dmg = Math.ceil(dmg / 2);
     if (exposed.has(p.id)) dmg += 3;
     p.hp = Math.max(0, p.hp - dmg);
+    events.push({ kind: 'hit', target: who(p), dmg, ko: p.hp === 0, special: special || null });
     return `${p.name} takes ${dmg}${p.hp === 0 ? ' and is knocked out! 😵' : '.'}`;
   };
   const standing = () => room.players.filter((p) => p.hp > 0);
@@ -364,12 +398,13 @@ function resolveRound(room) {
   if (!standing().length) {
     // Nobody left standing to attack.
   } else if (s && e.round % s.every === 0) {
+    events.push({ kind: 'special', name: s.name, all: s.kind === 'all' });
     if (s.kind === 'all') {
       log.push(`⚠️ ${e.name} uses ${s.name}! It hits everyone!`);
-      standing().forEach((p) => log.push(`   ${hit(p, rand(...s.dmg))}`));
+      standing().forEach((p) => log.push(`   ${hit(p, rand(...s.dmg), s.name)}`));
     } else {
       const t = pick(standing());
-      log.push(`⚠️ ${e.name} uses ${s.name} on ${t.name}! ${hit(t, rand(...s.dmg) * 2)}`);
+      log.push(`⚠️ ${e.name} uses ${s.name} on ${t.name}! ${hit(t, rand(...s.dmg) * 2, s.name)}`);
     }
   } else {
     for (let i = 0; i < e.attacks && standing().length; i++) {
@@ -380,11 +415,14 @@ function resolveRound(room) {
   e.round++;
   e.log = log;
   if (!activePlayers(room).length && room.players.some((p) => p.connected)) {
+    cutscene('wipe');
     room.players.forEach((p) => { p.hp = p.maxHp; });
     room.enc = null;
     room.phase = 'map';
     say(room, `😵 The whole team was knocked out by ${e.emoji} ${e.name}! You wake up back at camp, fully healed. Try again!`);
+    return;
   }
+  cutscene(null);
 }
 
 // ---------- Riddles ----------
@@ -478,7 +516,7 @@ function view(room, playerId) {
         chosen: Object.keys(e.choices), yourChoice: e.choices[playerId] || null };
     } else if (e.type === 'riddle') {
       const r = e.list[e.index];
-      enc = { ...base, index: e.index, total: e.list.length, q: r.q, options: r.options, wrong: e.wrong };
+      enc = { ...base, variant: e.variant || null, index: e.index, total: e.list.length, q: r.q, options: r.options, wrong: e.wrong };
     } else if (e.type === 'hunt') {
       enc = { ...base, stage: e.stage, found: e.found, needed: e.needed, traps: e.traps,
         places: e.places.map((p) => (p.searchedBy
@@ -510,6 +548,7 @@ function view(room, playerId) {
     }),
     leaderId: room.players.length ? leaderOf(room).id : null,
     feed: room.feed,
+    cutscene: room.cutscene || null,
     enc,
   };
 }

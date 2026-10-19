@@ -2,7 +2,7 @@
 // Jungle Quest client: shows the game and sends clicks to the server.
 
 const AVATARS = ['🦁', '🐯', '🦊', '🐼', '🐨', '🐸', '🐵', '🦉', '🦜', '🐢', '🦄', '🐺'];
-const TYPE_LABEL = { fight: '⚔️ Creature', riddle: '❓ Riddles', hunt: '🔍 Clue Hunt', code: '🔐 Secret Code' };
+const TYPE_LABEL = { fight: '⚔️ Creature', riddle: '❓ Riddles', path: '🧭 Lost Path', hunt: '🔍 Clue Hunt', code: '🔐 Secret Code' };
 
 const app = document.getElementById('app');
 const toast = document.getElementById('toast');
@@ -16,6 +16,7 @@ const sessionSet = (v) => { try { v ? sessionStorage.setItem('jq-session', JSON.
 let session = sessionGet();
 let state = null;
 let unsubscribe = null;
+let lastCutscene = null;
 const ui = {
   name: store.get('jq-name', ''),
   avatar: store.get('jq-avatar', AVATARS[Math.floor(Math.random() * AVATARS.length)]),
@@ -73,8 +74,13 @@ function connect() {
   if (unsubscribe) unsubscribe();
   unsubscribe = net.subscribe(session, (next) => {
     const prevPhase = state && state.phase;
+    const firstState = !state;
     state = next;
     if (state.phase !== prevPhase) { ui.healing = false; ui.slot = 0; }
+    if (state.cutscene && state.cutscene.id !== lastCutscene) {
+      if (!firstState) cutscenes.play(state.cutscene); // don't replay an old fight when you (re)connect
+      lastCutscene = state.cutscene.id;
+    }
     if (state.unlocked > store.get('jq-unlocked', 1)) store.set('jq-unlocked', state.unlocked);
     render();
   }, () => leave('That game has ended.'), showError);
@@ -303,8 +309,9 @@ function fight() {
 function riddle() {
   const e = state.enc;
   return `<div class="card"><div class="monster">${e.emoji}</div><h2 class="center">${esc(e.name)}</h2>
-    <p>${esc(e.intro)}</p><p class="muted">Riddle ${e.index + 1} of ${e.total}. Talk it over — anyone can answer!</p>
-    <h3>${esc(e.q)}</h3>
+    <p>${esc(e.intro)}</p><p class="muted">${e.variant === 'path' ? 'Fork in the path' : 'Riddle'} ${e.index + 1} of ${e.total}. Talk it over — anyone can answer!</p>
+    <h3>${e.variant === 'path' ? '🌫️ ' : ''}${esc(e.q)}</h3>
+    ${e.variant === 'path' ? '<p class="muted">Which way do you go?</p>' : ''}
     <div class="options">${e.options.map((o) => {
       const wrong = e.wrong.includes(o);
       return actBtn(esc(o), { type: 'answer', choice: o }, wrong ? 'wrong' : '', wrong);
@@ -359,6 +366,146 @@ function levelWon() {
       : '<p class="muted">Waiting for the host...</p>'}
   </div>`;
 }
+
+// ---------- Fight cutscenes ----------
+// After each fight round, every explorer's move plays as a short animation,
+// then the creature strikes back. Tap Skip to jump past it.
+
+const cutscenes = (() => {
+  const el = document.createElement('div');
+  el.id = 'cutscene';
+  el.hidden = true;
+  el.innerHTML = `<div class="cs-stage">
+    <div class="cs-arena">
+      <div class="cs-side cs-hero"><div class="cs-emoji"></div><div class="cs-name"></div></div>
+      <div class="cs-fx"></div>
+      <div class="cs-side cs-foe"><div class="cs-emoji"></div><div class="cs-name"></div><div class="bar boss"><div></div></div></div>
+    </div>
+    <div class="cs-caption"></div>
+    <button class="ghost small cs-skip" type="button">Skip ⏭</button>
+  </div>`;
+  document.body.appendChild(el);
+  const $ = (sel) => el.querySelector(sel);
+  const hero = $('.cs-hero');
+  const foe = $('.cs-foe');
+  const fx = $('.cs-fx');
+  const caption = $('.cs-caption');
+  const bar = $('.cs-foe .bar > div');
+  const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const STEP = calm ? 700 : 1100;
+  const queue = [];
+  let playing = false;
+  let skipped = false;
+  let wake = null;
+
+  $('.cs-skip').addEventListener('click', () => { skipped = true; if (wake) wake(); });
+
+  const wait = (ms) => new Promise((resolve) => { wake = resolve; setTimeout(resolve, ms); });
+  const move = (node, frames, ms = 450) => { if (!calm && node.animate) node.animate(frames, { duration: ms, easing: 'ease-out' }); };
+  const lunge = (node, dir) => move(node, [{ transform: 'translateX(0)' }, { transform: `translateX(${dir * 70}%) scale(1.15)` }, { transform: 'translateX(0)' }]);
+  const shake = (node) => move(node, [0, -12, 12, -8, 8, 0].map((x) => ({ transform: `translateX(${x}px)` })), 400);
+  function pop(node, text, kind) {
+    const span = document.createElement('span');
+    span.className = `cs-pop ${kind}`;
+    span.textContent = text;
+    node.appendChild(span);
+    setTimeout(() => span.remove(), STEP);
+  }
+  function setHero(p, ko) {
+    hero.querySelector('.cs-emoji').textContent = ko ? '😵' : p.avatar;
+    hero.querySelector('.cs-name').textContent = p.name;
+  }
+  const setHp = (hp, max) => { bar.style.width = `${Math.max(0, Math.round((hp / max) * 100))}%`; };
+
+  async function show(cs) {
+    let hp = cs.startHp;
+    foe.querySelector('.cs-emoji').textContent = cs.emoji;
+    foe.querySelector('.cs-name').textContent = cs.name;
+    foe.style.opacity = 1;
+    setHp(hp, cs.maxHp);
+    el.hidden = false;
+    for (const ev of cs.events) {
+      if (skipped) break;
+      fx.textContent = '';
+      if (ev.kind === 'attack' || ev.kind === 'power') {
+        setHero(ev.actor);
+        fx.textContent = ev.kind === 'power' ? '🔨' : ev.crit ? '💥' : '⚔️';
+        caption.textContent = ev.kind === 'power' ? `${ev.actor.name} uses POWER SMASH!` : ev.crit ? `${ev.actor.name} lands a CRITICAL hit!` : `${ev.actor.name} attacks!`;
+        lunge(hero, 1);
+        await wait(STEP * 0.35);
+        hp = Math.max(0, hp - ev.dmg);
+        setHp(hp, cs.maxHp);
+        shake(foe);
+        pop(foe, `-${ev.dmg}`, ev.crit || ev.kind === 'power' ? 'big bad' : 'bad');
+        await wait(STEP * 0.65);
+      } else if (ev.kind === 'miss') {
+        setHero(ev.actor);
+        fx.textContent = '💨';
+        caption.textContent = `${ev.actor.name} swings big...`;
+        lunge(hero, 1);
+        move(foe, [{ transform: 'translateY(0)' }, { transform: 'translateY(-30px)' }, { transform: 'translateY(0)' }]);
+        await wait(STEP * 0.35);
+        pop(foe, 'MISS!', 'miss');
+        caption.textContent = `${ev.actor.name} misses!`;
+        await wait(STEP * 0.65);
+      } else if (ev.kind === 'defend') {
+        setHero(ev.actor);
+        fx.textContent = '🛡️';
+        caption.textContent = ev.slow ? `${ev.actor.name} was too slow and defends.` : `${ev.actor.name} gets ready to block!`;
+        move(fx, [{ transform: 'scale(0.6)' }, { transform: 'scale(1.4)' }, { transform: 'scale(1)' }]);
+        pop(hero, '+2', 'good');
+        await wait(STEP);
+      } else if (ev.kind === 'heal') {
+        setHero(ev.target);
+        fx.textContent = '🧪';
+        caption.textContent = ev.revive ? `${ev.actor.name} revives ${ev.target.name}!` : `${ev.actor.name} heals ${ev.target.name}!`;
+        move(hero, [{ transform: 'scale(1)' }, { transform: 'scale(1.2)' }, { transform: 'scale(1)' }]);
+        pop(hero, ev.revive ? '✨ BACK!' : '+10', 'good');
+        await wait(STEP);
+      } else if (ev.kind === 'special') {
+        fx.textContent = '⚠️';
+        caption.textContent = `${cs.name} uses ${ev.name.toUpperCase()}!`;
+        move(foe, [{ transform: 'scale(1)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }], 700);
+        await wait(STEP);
+      } else if (ev.kind === 'hit') {
+        setHero(ev.target);
+        fx.textContent = ev.special ? '⚠️' : cs.emoji.slice(0, 2);
+        caption.textContent = `${cs.name} ${ev.special ? `hits ${ev.target.name} with ${ev.special}` : `attacks ${ev.target.name}`}!`;
+        lunge(foe, -1);
+        await wait(STEP * 0.35);
+        shake(hero);
+        pop(hero, `-${ev.dmg}`, 'bad');
+        if (ev.ko) { setHero(ev.target, true); caption.textContent = `${ev.target.name} is knocked out!`; }
+        await wait(STEP * 0.65);
+      }
+    }
+    if (!skipped && cs.result) {
+      fx.textContent = cs.result === 'win' ? '🎉' : '😵';
+      caption.textContent = cs.result === 'win' ? `${cs.name} is defeated! VICTORY!` : 'The whole team is knocked out...';
+      if (cs.result === 'win') {
+        setHp(0, cs.maxHp);
+        move(foe, [{ transform: 'rotate(0) scale(1)', opacity: 1 }, { transform: 'rotate(90deg) scale(0.6)', opacity: 0 }], 800);
+        setTimeout(() => { foe.style.opacity = 0; }, 780);
+      }
+      await wait(STEP * 1.4);
+    }
+    el.hidden = true;
+  }
+
+  return {
+    async play(cs) {
+      if (!cs || !cs.events || !cs.events.length) return;
+      queue.push(cs);
+      if (playing) return;
+      playing = true;
+      while (queue.length) {
+        skipped = false;
+        await show(queue.shift());
+      }
+      playing = false;
+    },
+  };
+})();
 
 // Show unexpected problems on screen so players can tell us what went wrong.
 window.addEventListener('error', (e) => showError(`Oops: ${e.message}`));

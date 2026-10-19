@@ -6,6 +6,9 @@
 }
 body.lake { --bg1: #0b3a4a; --bg2: #1d6b5c; }
 body.cave { --bg1: #16131f; --bg2: #3a3147; --accent: #e9a6ff; }
+body.forest { --bg1: #0e1f1a; --bg2: #2c3f2a; --accent: #b6e388; }
+body.mountain { --bg1: #2b3a55; --bg2: #6c84a3; --accent: #ffe08a; }
+body.underground { --bg1: #1f140c; --bg2: #4a3322; --accent: #f0a35e; }
 html { color-scheme: dark; }
 body {
   margin: 0; min-height: 100vh; color: var(--text);
@@ -104,9 +107,34 @@ input, textarea {
 .symbols { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 .symbols button { font-size: 2rem; width: 60px; height: 60px; background: rgba(255, 255, 255, 0.15); }
 
+/* Fight cutscenes */
+#cutscene {
+  position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.93); padding: 16px; backdrop-filter: blur(4px);
+}
+#cutscene[hidden] { display: none; }
+.cs-stage { width: 100%; max-width: 560px; text-align: center; }
+.cs-arena { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; min-height: 200px; }
+.cs-side { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.cs-emoji { font-size: clamp(3.5rem, 18vw, 6rem); line-height: 1.1; }
+.cs-name { font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-foe .bar { width: 80%; }
+.cs-fx { font-size: clamp(2rem, 10vw, 3.2rem); min-width: 1.5em; }
+.cs-caption { font-size: 1.25rem; font-weight: 800; min-height: 3em; margin: 12px 0; text-wrap: balance; }
+.cs-pop {
+  position: absolute; top: 10%; left: 50%; transform: translateX(-50%); font-weight: 900; font-size: 1.8rem;
+  animation: cs-float 1s ease-out forwards; pointer-events: none; text-shadow: 0 2px 6px #000;
+}
+.cs-pop.bad { color: var(--bad); }
+.cs-pop.good { color: var(--good); }
+.cs-pop.miss { color: #fff; }
+.cs-pop.big { font-size: 2.6rem; }
+@keyframes cs-float { from { opacity: 1; margin-top: 0; } to { opacity: 0; margin-top: -60px; } }
+@media (prefers-reduced-motion: reduce) { .cs-pop { animation: none; } }
+
 #toast {
   position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--bad); color: #fff;
-  padding: 10px 18px; border-radius: 10px; font-weight: 700; max-width: calc(100% - 32px); z-index: 10;
+  padding: 10px 18px; border-radius: 10px; font-weight: 700; max-width: calc(100% - 32px); z-index: 30;
 }
 
 @media (max-width: 560px) {

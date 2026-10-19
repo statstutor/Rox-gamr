@@ -1,5 +1,5 @@
 'use strict';
-// Plays through both levels with pretend players to check the rules work.
+// Plays through every level with pretend players to check the rules work.
 // Run with: npm test
 const assert = require('assert');
 const game = require('./game');
@@ -58,15 +58,17 @@ for (let n = game.MIN_PLAYERS; n <= game.MAX_PLAYERS; n++) {
   game.act(room, ids[0], { type: 'start' });
   assert.throws(() => game.act(room, ids[0], { type: 'chooseLevel', level: 2 }), /locked/);
 
-  playLevel(room, ids);
-  assert.strictEqual(room.unlocked, 2, 'beating level 1 unlocks level 2');
-  playLevel(room, ids);
-  assert.strictEqual(room.level, LEVELS.length);
+  for (const level of LEVELS) {
+    playLevel(room, ids);
+    assert.strictEqual(room.level, level.id);
+    assert.strictEqual(room.unlocked, Math.min(level.id + 1, LEVELS.length), `beating level ${level.id} unlocks the next one`);
+  }
+  assert(room.cutscene && room.cutscene.result === 'win' && room.cutscene.events.length, 'the last fight has a cutscene');
 
   // Secret code hints stay private.
   const v = game.view(room, ids[1]);
   assert(!JSON.stringify(v).includes('"answer"'));
-  console.log(`✅ ${n} players: beat both levels`);
+  console.log(`✅ ${n} players: beat all ${LEVELS.length} levels`);
 }
 
 // Creatures get tougher with more players.
