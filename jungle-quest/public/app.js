@@ -6,9 +6,13 @@ const TYPE_LABEL = { fight: '⚔️ Creature', riddle: '❓ Riddles', path: '�
 
 const app = document.getElementById('app');
 const toast = document.getElementById('toast');
+const memory = {}; // used when the browser won't let the page save anything
 const store = {
-  get(k, fallback) { try { return JSON.parse(localStorage.getItem(k)) ?? fallback; } catch { return fallback; } },
-  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } },
+  get(k, fallback) {
+    try { const v = JSON.parse(localStorage.getItem(k)); if (v != null) return v; } catch { /* private mode */ }
+    return memory[k] ?? fallback;
+  },
+  set(k, v) { memory[k] = v; try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } },
 };
 const sessionGet = () => { try { return JSON.parse(sessionStorage.getItem('jq-session')); } catch { return null; } };
 const sessionSet = (v) => { try { v ? sessionStorage.setItem('jq-session', JSON.stringify(v)) : sessionStorage.removeItem('jq-session'); } catch { /* ignore */ } };
@@ -32,6 +36,13 @@ const actBtn = (label, action, cls = '', disabled = false) =>
   `<button class="${cls}" data-act="${esc(JSON.stringify(action))}" ${disabled ? 'disabled' : ''}>${label}</button>`;
 const uiBtn = (label, name, value = '', cls = '', disabled = false) =>
   `<button class="${cls}" data-ui="${name}" data-value="${esc(value)}" ${disabled ? 'disabled' : ''}>${label}</button>`;
+
+// Beaten levels stay unlocked: saved in this browser and, where the page can, in the player's account.
+const unlockedLevels = () => store.get('jq-unlocked', 1);
+function rememberUnlocked(n) {
+  if (n > unlockedLevels()) store.set('jq-unlocked', n);
+  if (net.saveProgress) net.saveProgress(n);
+}
 
 let toastTimer;
 function showError(msg) {
@@ -81,7 +92,7 @@ function connect() {
       if (!firstState) cutscenes.play(state.cutscene); // don't replay an old fight when you (re)connect
       lastCutscene = state.cutscene.id;
     }
-    if (state.unlocked > store.get('jq-unlocked', 1)) store.set('jq-unlocked', state.unlocked);
+    if (state.unlocked > unlockedLevels()) rememberUnlocked(state.unlocked);
     render();
   }, () => leave('That game has ended.'), showError);
 }
@@ -119,10 +130,10 @@ document.addEventListener('click', (e) => {
   const v = u.dataset.value;
   switch (u.dataset.ui) {
     case 'avatar': ui.avatar = v; render(); break;
-    case 'create': enter(net.create, { name: ui.name, avatar: ui.avatar, unlocked: store.get('jq-unlocked', 1) }); break;
+    case 'create': enter(net.create, { name: ui.name, avatar: ui.avatar, unlocked: unlockedLevels() }); break;
     case 'join': enter(net.join, { code: ui.joinCode, name: ui.name, avatar: ui.avatar }); break;
-    case 'solo': enter(net.createSolo, { name: ui.name, avatar: ui.avatar, bots: Number(v), unlocked: store.get('jq-unlocked', 1) }); break;
-    case 'local': enter(net.createLocal, { names: ui.localNames.split(/[\n,]/), unlocked: store.get('jq-unlocked', 1) }); break;
+    case 'solo': enter(net.createSolo, { name: ui.name, avatar: ui.avatar, bots: Number(v), unlocked: unlockedLevels() }); break;
+    case 'local': enter(net.createLocal, { names: ui.localNames.split(/[\n,]/), unlocked: unlockedLevels() }); break;
     case 'playAs': session = { ...session, playerId: v }; sessionSet(session); connect(); break;
     case 'leave':
       if (ui.leaving) { leave(); break; }
@@ -181,7 +192,8 @@ function homeScreen() {
     : '';
   return `
   <div class="hero"><div class="big">🌴🐊🐻🌴</div><h1>Jungle Quest</h1>
-    <p class="muted">Explore the jungle with 4 to 9 friends. Fight creatures, solve mysteries, unlock new levels!</p></div>
+    <p class="muted">Explore the jungle with 4 to 9 friends. Fight creatures, solve mysteries, unlock new levels!</p>
+    ${unlockedLevels() > 1 ? `<p><span class="chip">🔓 You've unlocked up to Level ${unlockedLevels()}</span></p>` : ''}</div>
   <div class="card">
     <h3>1. Who are you?</h3>
     <input id="name" maxlength="16" placeholder="Your name" value="${esc(ui.name)}" style="width:100%">
@@ -510,6 +522,13 @@ const cutscenes = (() => {
 // Show unexpected problems on screen so players can tell us what went wrong.
 window.addEventListener('error', (e) => showError(`Oops: ${e.message}`));
 window.addEventListener('unhandledrejection', (e) => showError(`Oops: ${(e.reason && e.reason.message) || e.reason}`));
+
+if (net.loadProgress) {
+  net.loadProgress().then((n) => {
+    if (n > unlockedLevels()) { store.set('jq-unlocked', n); if (!session) render(); }
+    else if (unlockedLevels() > n) net.saveProgress(unlockedLevels());
+  });
+}
 
 try {
   if (session) connect();

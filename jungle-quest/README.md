@@ -17,8 +17,15 @@ Explore the jungle together, fight creatures, solve mysteries, and unlock new le
 5. **🕳️ Mole Hideout** (more fighting than mysteries): fight mole diggers, a giant worm, a grumpy badger,
    a beetle swarm and a burrowing snake, get through the Mole Riddle Door and the Tunnel Lock, then beat
    **the Mole Queen**.
+6. **🐯 Tiger Field**: fight laughing hyenas, a speedy cheetah, a lion pride and a striped tiger, answer the
+   Wise Old Tortoise's riddles, find out who drank all the water, open the Golden Paw Stone, then beat
+   **the Tiger King**.
+7. **👺 Goblin Pond** (mostly fighting): fight a goblin gang, goblin archers, an orc warrior, a goblin shaman
+   and an orc brute squad, cross the Goblin Riddle Bridge, open the goblins' treasure chest, then beat
+   **the Pond Troll**.
 
-Each level unlocks after you beat the one before it.
+Each level unlocks after you beat the one before it, and stays unlocked for good: the page remembers it in
+your browser and, on the claude.ai version, in your Claude account too.
 
 ## How to play
 
@@ -52,7 +59,10 @@ Then open http://localhost:3000. Friends on the same Wi-Fi can join at `http://<
 To play with people anywhere, put it on a Node hosting service (for example Render, Railway or Fly.io)
 using `npm start` as the start command. The service sets `PORT` automatically.
 
-Run `npm test` to play through all five levels with pretend players for every team size from 4 to 9.
+Run `npm test` to play through every level with pretend players for every team size from 4 to 9.
+
+Run `node balance.js` to see how often teams of each size get knocked out in each level, which helps when
+tuning creatures in `levels.js`.
 
 Games are kept in the server's memory, so restarting the server ends any games in progress.
 Unlocked levels are remembered in each player's browser, so whoever hosts next time keeps them.

@@ -9,6 +9,8 @@ body.cave { --bg1: #16131f; --bg2: #3a3147; --accent: #e9a6ff; }
 body.forest { --bg1: #0e1f1a; --bg2: #2c3f2a; --accent: #b6e388; }
 body.mountain { --bg1: #2b3a55; --bg2: #6c84a3; --accent: #ffe08a; }
 body.underground { --bg1: #1f140c; --bg2: #4a3322; --accent: #f0a35e; }
+body.savanna { --bg1: #4a3410; --bg2: #a2782a; --accent: #ffd36b; }
+body.swamp { --bg1: #142016; --bg2: #3c5a2c; --accent: #c6f07a; }
 html { color-scheme: dark; }
 body {
   margin: 0; min-height: 100vh; color: var(--text);

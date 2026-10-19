@@ -16,13 +16,19 @@
   const roomName = (code) => `jq-${code.toLowerCase()}`;
 
   let caps = null;
+  let resolveProgressDoc;
+  const progressDoc = new Promise((resolve) => { resolveProgressDoc = resolve; });
   const capsReady = (async () => {
     if (!window.claude || !window.claude.use) {
       features.onlineNote = 'Online play works when this page is opened on claude.ai. You can still play on one device below.';
       notify();
+      resolveProgressDoc(null);
       return null;
     }
     const [db, room, user] = await Promise.all(['db', 'room', 'user'].map((n) => window.claude.use(n).catch(() => null)));
+    // Each person's unlocked levels live in their own private spot in the page's storage.
+    const uid = db && user ? await user.id().catch(() => null) : null;
+    resolveProgressDoc(uid ? db.doc(`data/users/${uid}/progress`) : null);
     if (!db || !room) {
       features.onlineNote = 'To play online, sign in to Claude and ask the owner of this page to invite you. You can still play on one device below.';
       notify();
@@ -290,8 +296,28 @@
     return () => { stopped = true; unsubDoc(); players.delete(s.code); if (named) named.leave(); };
   }
 
+  // Remember beaten levels in the player's Claude account, so they stay unlocked
+  // even if this browser forgets them. Best effort: errors just mean no backup.
+  async function loadProgress() {
+    const ref = await progressDoc;
+    if (!ref) return 1;
+    try {
+      const snap = await ref.get();
+      return (snap.exists && Number(snap.data().unlocked)) || 1;
+    } catch { return 1; }
+  }
+  let savedProgress = 0;
+  async function saveProgress(unlocked) {
+    const ref = await progressDoc;
+    if (!ref || unlocked <= savedProgress) return;
+    savedProgress = unlocked;
+    try { await ref.set({ unlocked }); } catch { savedProgress = 0; }
+  }
+
   window.JQ_NET = {
     features,
+    loadProgress,
+    saveProgress,
     createLocal,
     createSolo,
     create,
