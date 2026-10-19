@@ -11,7 +11,7 @@
   const features = { online: false, invite: false, local: true, canHost: null, onlineNote: 'Checking online play...' };
   const notify = () => window.dispatchEvent(new Event('jq-net'));
   const listeners = new Map(); // code -> function to re-send the view
-  const randomId = () => crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+  const randomId = () => Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
   const message = (err) => (err && err.message) || String(err);
   const roomName = (code) => `jq-${code.toLowerCase()}`;
 

@@ -360,5 +360,18 @@ function levelWon() {
   </div>`;
 }
 
-if (session) connect();
-render();
+// Show unexpected problems on screen so players can tell us what went wrong.
+window.addEventListener('error', (e) => showError(`Oops: ${e.message}`));
+window.addEventListener('unhandledrejection', (e) => showError(`Oops: ${(e.reason && e.reason.message) || e.reason}`));
+
+try {
+  if (session) connect();
+  render();
+} catch (err) {
+  // A saved game from an older version can break things: start fresh.
+  sessionSet(null);
+  session = null;
+  state = null;
+  render();
+  showError(`Oops: ${err.message}`);
+}

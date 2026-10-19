@@ -4,8 +4,12 @@
 
 const { LEVELS } = require('./levels');
 // Works in Node and in the browser build (see build-artifact.js).
-const randomId = () => (globalThis.crypto && globalThis.crypto.randomUUID
-  ? globalThis.crypto.randomUUID() : require('crypto').randomUUID()).replace(/-/g, '').slice(0, 16);
+function randomId() {
+  const c = globalThis.crypto;
+  if (c && c.getRandomValues) return Array.from(c.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, '0')).join('');
+  if (typeof require === 'function' && require('crypto')) return require('crypto').randomBytes(8).toString('hex');
+  return Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+}
 
 const MIN_PLAYERS = 4;
 const MAX_PLAYERS = 9;
