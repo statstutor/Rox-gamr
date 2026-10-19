@@ -6,6 +6,7 @@
 }
 body.lake { --bg1: #0b3a4a; --bg2: #1d6b5c; }
 body.cave { --bg1: #16131f; --bg2: #3a3147; --accent: #e9a6ff; }
+html { color-scheme: dark; }
 body {
   margin: 0; min-height: 100vh; color: var(--text);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -28,7 +29,7 @@ button:hover:not(:disabled) { filter: brightness(1.1); }
 button:disabled { opacity: 0.45; cursor: not-allowed; }
 button.ghost { background: transparent; color: var(--text); border: 2px solid var(--card2); }
 button.small { padding: 6px 10px; font-size: 0.9rem; }
-input {
+input, textarea {
   font: inherit; padding: 10px 12px; border-radius: 10px; border: 2px solid var(--card2);
   background: rgba(0, 0, 0, 0.3); color: var(--text); min-width: 0;
 }

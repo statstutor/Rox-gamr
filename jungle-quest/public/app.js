@@ -15,13 +15,15 @@ const sessionSet = (v) => { try { v ? sessionStorage.setItem('jq-session', JSON.
 
 let session = sessionGet();
 let state = null;
-let events = null;
+let unsubscribe = null;
 const ui = {
   name: store.get('jq-name', ''),
   avatar: store.get('jq-avatar', AVATARS[Math.floor(Math.random() * AVATARS.length)]),
   joinCode: new URLSearchParams(location.search).get('join') || '',
+  localNames: '',
   healing: false,
   slot: 0,
+  leaving: false,
 };
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -45,41 +47,58 @@ async function post(url, body) {
   return data;
 }
 
+// How this page talks to the other players. The Node server version is below;
+// the Claude page build (build-artifact.js) swaps in its own as window.JQ_NET.
+function serverNet() {
+  return {
+    features: { online: true, invite: true, local: false },
+    create: (body) => post('/api/create', body),
+    join: (body) => post('/api/join', body),
+    act: (s, action) => post('/api/act', { code: s.code, playerId: s.playerId, action }),
+    subscribe(s, onState, onGone) {
+      const events = new EventSource(`/api/events?code=${encodeURIComponent(s.code)}&playerId=${encodeURIComponent(s.playerId)}`);
+      events.onmessage = (e) => onState(JSON.parse(e.data));
+      events.addEventListener('gone', onGone);
+      return () => events.close();
+    },
+  };
+}
+const net = window.JQ_NET || serverNet();
+
 async function act(action) {
-  try { await post('/api/act', { ...session, action }); } catch (err) { showError(err.message); }
+  try { await net.act(session, action); } catch (err) { showError(err.message); }
 }
 
 function connect() {
-  if (events) events.close();
-  events = new EventSource(`/api/events?code=${encodeURIComponent(session.code)}&playerId=${encodeURIComponent(session.playerId)}`);
-  events.onmessage = (e) => {
+  if (unsubscribe) unsubscribe();
+  unsubscribe = net.subscribe(session, (next) => {
     const prevPhase = state && state.phase;
-    state = JSON.parse(e.data);
+    state = next;
     if (state.phase !== prevPhase) { ui.healing = false; ui.slot = 0; }
     if (state.unlocked > store.get('jq-unlocked', 1)) store.set('jq-unlocked', state.unlocked);
     render();
-  };
-  events.addEventListener('gone', () => leave('That game has ended.'));
+  }, () => leave('That game has ended.'), showError);
 }
 
 function leave(message) {
-  if (events) events.close();
-  events = null;
+  if (unsubscribe) unsubscribe();
+  unsubscribe = null;
   session = null;
   state = null;
+  ui.leaving = false;
   sessionSet(null);
   render();
   if (message) showError(message);
 }
 
-async function enter(url, body) {
+async function enter(start, body) {
   ui.name = ui.name.trim();
   store.set('jq-name', ui.name);
   store.set('jq-avatar', ui.avatar);
   try {
-    session = await post(url, body);
+    session = await start(body);
     sessionSet(session);
-    history.replaceState(null, '', location.pathname);
+    try { history.replaceState(null, '', location.pathname); } catch { /* ignore */ }
     connect();
   } catch (err) { showError(err.message); }
 }
@@ -94,10 +113,19 @@ document.addEventListener('click', (e) => {
   const v = u.dataset.value;
   switch (u.dataset.ui) {
     case 'avatar': ui.avatar = v; render(); break;
-    case 'create': enter('/api/create', { name: ui.name, avatar: ui.avatar, unlocked: store.get('jq-unlocked', 1) }); break;
-    case 'join': enter('/api/join', { code: ui.joinCode, name: ui.name, avatar: ui.avatar }); break;
-    case 'leave': if (confirm('Leave this game?')) leave(); break;
-    case 'copy': navigator.clipboard?.writeText(v).then(() => showError('Link copied! 📋'), () => {}); break;
+    case 'create': enter(net.create, { name: ui.name, avatar: ui.avatar, unlocked: store.get('jq-unlocked', 1) }); break;
+    case 'join': enter(net.join, { code: ui.joinCode, name: ui.name, avatar: ui.avatar }); break;
+    case 'local': enter(net.createLocal, { names: ui.localNames.split(/[\n,]/), unlocked: store.get('jq-unlocked', 1) }); break;
+    case 'playAs': session = { ...session, playerId: v }; sessionSet(session); connect(); break;
+    case 'leave':
+      if (ui.leaving) { leave(); break; }
+      ui.leaving = true;
+      render();
+      setTimeout(() => { if (ui.leaving) { ui.leaving = false; render(); } }, 3000);
+      break;
+    case 'copy':
+      Promise.resolve().then(() => navigator.clipboard.writeText(v)).then(() => showError('Link copied! 📋'), () => showError(v));
+      break;
     case 'heal': ui.healing = !ui.healing; render(); break;
     case 'slot': ui.slot = Number(v); render(); break;
     case 'symbol':
@@ -109,7 +137,9 @@ document.addEventListener('click', (e) => {
 document.addEventListener('input', (e) => {
   if (e.target.id === 'name') ui.name = e.target.value;
   if (e.target.id === 'joincode') ui.joinCode = e.target.value.toUpperCase();
+  if (e.target.id === 'localnames') ui.localNames = e.target.value;
 });
+window.addEventListener('jq-net', () => { if (!session) render(); });
 
 // ---------- Screens ----------
 
@@ -122,6 +152,21 @@ function render() {
 }
 
 function homeScreen() {
+  const f = net.features;
+  const online = f.online
+    ? `<div class="row">${f.canHost === false
+        ? '<span class="muted">Only people who can edit this page can start an online game. You can still join one!</span>'
+        : uiBtn('🌟 Create a new game', 'create')}</div>
+      <p class="muted">...or type the 4-letter code a friend gave you:</p>
+      <div class="row"><input id="joincode" maxlength="4" placeholder="ABCD" value="${esc(ui.joinCode)}" style="width:110px;text-transform:uppercase">
+        ${uiBtn('Join game', 'join', '', 'ghost')}</div>`
+    : `<p class="muted">${esc(f.onlineNote || 'Connecting...')}</p>`;
+  const local = f.local
+    ? `<div class="card"><h3>Or play together on this device</h3>
+        <p class="muted">Pass one phone or computer around. Type 4 to 9 names, one per line.</p>
+        <textarea id="localnames" rows="5" placeholder="Maya&#10;Leo&#10;Sam&#10;Ana" style="width:100%">${esc(ui.localNames)}</textarea>
+        <div class="row" style="margin-top:8px">${uiBtn('🌴 Play on this device', 'local', '', 'ghost')}</div></div>`
+    : '';
   return `
   <div class="hero"><div class="big">🌴🐊🐻🌴</div><h1>Jungle Quest</h1>
     <p class="muted">Explore the jungle with 4 to 9 friends. Fight creatures, solve mysteries, unlock new levels!</p></div>
@@ -131,17 +176,19 @@ function homeScreen() {
     <div class="avatars">${AVATARS.map((a) => uiBtn(a, 'avatar', a, a === ui.avatar ? 'on' : '')).join('')}</div>
   </div>
   <div class="card">
-    <h3>2. Start or join a game</h3>
-    <div class="row">${uiBtn('🌟 Create a new game', 'create')}</div>
-    <p class="muted">...or type the 4-letter code a friend gave you:</p>
-    <div class="row"><input id="joincode" maxlength="4" placeholder="ABCD" value="${esc(ui.joinCode)}" style="width:110px;text-transform:uppercase">
-      ${uiBtn('Join game', 'join', '', 'ghost')}</div>
-  </div>`;
+    <h3>2. Start or join an online game</h3>
+    ${online}
+  </div>
+  ${local}`;
 }
 
 function header() {
+  const switcher = session.local
+    ? `<div class="card"><div class="tiny">Whose turn is it? Tap your name, then play.</div><div class="row" style="margin-top:6px">${state.players.map((p) =>
+        uiBtn(`${p.avatar} ${esc(p.name)}`, 'playAs', p.id, p.id === state.you ? 'small' : 'ghost small')).join('')}</div></div>`
+    : '';
   return `<div class="top"><div class="logo">🌴 Jungle Quest</div>
-    <div class="row"><span class="chip">Game ${esc(state.code)}</span>${uiBtn('Leave', 'leave', '', 'ghost small')}</div></div>`;
+    <div class="row">${session.local ? '' : `<span class="chip">Game ${esc(state.code)}</span>`}${uiBtn(ui.leaving ? 'Tap again to leave' : 'Leave', 'leave', '', 'ghost small')}</div></div>${switcher}`;
 }
 
 const me = () => state.players.find((p) => p.id === state.you);
@@ -179,7 +226,7 @@ function lobby() {
   return `<div class="card center">
     <p class="muted">Tell your friends to join with this code:</p>
     <div class="code">${esc(state.code)}</div>
-    <div class="row" style="justify-content:center">${uiBtn('📋 Copy invite link', 'copy', link, 'ghost small')}</div>
+    ${net.features.invite ? `<div class="row" style="justify-content:center">${uiBtn('📋 Copy invite link', 'copy', link, 'ghost small')}</div>` : ''}
     <p>${need > 0 ? `Waiting for ${need} more explorer${need > 1 ? 's' : ''}... (${state.minPlayers} to ${state.maxPlayers} players)` : `${n} explorers ready! (up to ${state.maxPlayers})`}</p>
     <p class="muted">More explorers = bigger creatures and trickier mysteries!</p>
     ${isHost() ? actBtn('🚀 Start the adventure', { type: 'start' }, '', need > 0) : '<p>Waiting for the host to start...</p>'}

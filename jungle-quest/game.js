@@ -2,8 +2,10 @@
 // Game rules. The server keeps one "room" per group of players and calls
 // act() whenever someone clicks something. view() builds what each player sees.
 
-const crypto = require('crypto');
 const { LEVELS } = require('./levels');
+// Works in Node and in the browser build (see build-artifact.js).
+const randomId = () => (globalThis.crypto && globalThis.crypto.randomUUID
+  ? globalThis.crypto.randomUUID() : require('crypto').randomUUID()).replace(/-/g, '').slice(0, 16);
 
 const MIN_PLAYERS = 4;
 const MAX_PLAYERS = 9;
@@ -42,9 +44,9 @@ function cleanName(name) {
   return n;
 }
 
-function newPlayer(name, avatar) {
+function newPlayer(name, avatar, id) {
   return {
-    id: crypto.randomBytes(8).toString('hex'),
+    id: id || randomId(),
     name: cleanName(name),
     avatar: AVATARS.includes(avatar) ? avatar : pick(AVATARS),
     hp: MAX_HP,
@@ -75,12 +77,12 @@ function createRoom({ name, avatar, unlocked }) {
   return { room, player: host };
 }
 
-function joinRoom({ code, name, avatar }) {
+function joinRoom({ code, name, avatar, id }) {
   const room = rooms.get(String(code || '').trim().toUpperCase());
   if (!room) fail('No game with that code. Check the code and try again.');
   if (room.phase !== 'lobby') fail('That game has already started.');
   if (room.players.length >= MAX_PLAYERS) fail(`That game is full (${MAX_PLAYERS} players max).`);
-  const player = newPlayer(name, avatar);
+  const player = newPlayer(name, avatar, id);
   room.players.push(player);
   say(room, `${player.avatar} ${player.name} joined the team!`);
   return { room, player };

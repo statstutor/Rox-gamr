@@ -25,7 +25,7 @@ function playLevel(room, ids) {
     } else if (room.phase === 'riddle') {
       const r = e.list[e.index];
       const wrong = r.options.find((o) => o !== r.a && !e.wrong.includes(o));
-      game.act(room, ids[1], { type: 'answer', choice: Math.random() < 0.3 ? wrong : r.a });
+      game.act(room, ids[1], { type: 'answer', choice: wrong && Math.random() < 0.3 ? wrong : r.a });
     } else if (room.phase === 'hunt') {
       if (e.stage === 'search') {
         game.act(room, ids[steps % ids.length], { type: 'search', index: e.places.findIndex((p) => !p.searchedBy) });

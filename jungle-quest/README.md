@@ -44,3 +44,10 @@ Run `npm test` to play through both levels with pretend players for every team s
 
 Games are kept in the server's memory, so restarting the server ends any games in progress.
 Unlocked levels are remembered in each player's browser, so whoever hosts next time keeps them.
+
+## Claude page version
+
+`node build-artifact.js <file.html>` bundles the game into one page that can be published on claude.ai.
+That version also has **Play on this device** (pass one phone or computer around), and its online mode
+uses the page's built-in shared storage and live room instead of `server.js`: the host's page runs the
+game, and other players need a Claude account and access to the page.
