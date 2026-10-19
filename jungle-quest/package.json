@@ -1,0 +1,13 @@
+{
+  "name": "jungle-quest",
+  "version": "1.0.0",
+  "description": "Online multiplayer jungle adventure for 4 to 9 players",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
