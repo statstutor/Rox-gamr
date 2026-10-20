@@ -212,6 +212,7 @@ function startEncounter(room, spot) {
       attacks: c.attacks + Math.floor((n - 4) / 3),
       dmg: [c.dmg[0] + bonus, c.dmg[1] + bonus],
       special: c.special ? { ...c.special, dmg: [c.special.dmg[0] + bonus, c.special.dmg[1] + bonus] } : null,
+      enrage: c.enrage ? { ...c.enrage } : null, enraged: false,
       choices: {}, log: [def.intro],
     };
   } else if (def.type === 'riddle') {
@@ -288,7 +289,7 @@ function finishSpot(room, message) {
     if (room.level < LEVELS.length && room.unlocked <= room.level) {
       room.unlocked = room.level + 1;
       const next = LEVELS[room.level];
-      say(room, `🏆 ${level.name} is beaten! ${next.emoji} ${next.name} is now unlocked!`);
+      say(room, `🏆 ${level.name} is beaten! ${next.emoji} ${next.bonus ? 'BONUS LEVEL: ' : ''}${next.name} is now unlocked!`);
     } else {
       say(room, `🏆 ${level.name} is beaten!`);
     }
@@ -375,9 +376,19 @@ function resolveRound(room) {
 
   e.hp = Math.max(0, e.hp);
   e.choices = {};
+  // Some bosses get angry when they're hurt badly: they hit harder and use their special move more often.
+  if (e.enrage && !e.enraged && e.hp > 0 && e.hp <= e.maxHp * e.enrage.below) {
+    e.enraged = true;
+    const b = e.enrage.dmgBonus;
+    e.dmg = [e.dmg[0] + b, e.dmg[1] + b];
+    if (e.special) e.special = { ...e.special, every: e.enrage.specialEvery, dmg: [e.special.dmg[0] + b, e.special.dmg[1] + b] };
+    log.push(`🔥 ${e.name} is badly hurt and flies into a ${e.enrage.name.toUpperCase()}! It hits harder now!`);
+    events.push({ kind: 'enrage', name: e.enrage.name });
+  }
   const cutscene = (result) => {
     room.cutsceneSeq = (room.cutsceneSeq || 0) + 1;
-    room.cutscene = { id: room.cutsceneSeq, name: e.name, emoji: e.emoji, maxHp: e.maxHp, startHp, events, result };
+    const ragedBefore = !!e.enraged && !events.some((ev) => ev.kind === 'enrage');
+    room.cutscene = { id: room.cutsceneSeq, name: e.name, emoji: e.emoji, maxHp: e.maxHp, startHp, enraged: ragedBefore, events, result };
   };
   if (e.hp === 0) {
     cutscene('win');
@@ -512,7 +523,7 @@ function view(room, playerId) {
   if (e) {
     const base = { type: e.type, name: e.name, emoji: e.emoji, intro: e.intro };
     if (e.type === 'fight') {
-      enc = { ...base, hp: e.hp, maxHp: e.maxHp, round: e.round, log: e.log,
+      enc = { ...base, hp: e.hp, maxHp: e.maxHp, round: e.round, log: e.log, enraged: !!e.enraged,
         chosen: Object.keys(e.choices), yourChoice: e.choices[playerId] || null };
     } else if (e.type === 'riddle') {
       const r = e.list[e.index];
@@ -539,8 +550,8 @@ function view(room, playerId) {
     maxPlayers: MAX_PLAYERS,
     players: room.players.map(({ id, name, avatar, hp, maxHp, potions, connected, bot }) => ({ id, name, avatar, hp, maxHp, potions, connected, bot: !!bot })),
     unlocked: room.unlocked,
-    levels: LEVELS.map(({ id, name, emoji, blurb, theme }) => ({ id, name, emoji, blurb, theme })),
-    level: level && { id: level.id, name: level.name, emoji: level.emoji, theme: level.theme },
+    levels: LEVELS.map(({ id, name, emoji, blurb, theme, bonus }) => ({ id, name, emoji, blurb, theme, bonus: !!bonus })),
+    level: level && { id: level.id, name: level.name, emoji: level.emoji, theme: level.theme, bonus: !!level.bonus },
     spots: room.spots && room.spots.map((s) => {
       const def = level.spots.find((d) => d.id === s.id);
       return { id: s.id, type: def.type, name: def.name, emoji: def.emoji, boss: s.boss, done: s.done,

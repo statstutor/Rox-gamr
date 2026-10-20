@@ -193,7 +193,7 @@ function homeScreen() {
   return `
   <div class="hero"><div class="big">🌴🐊🐻🌴</div><h1>Jungle Quest</h1>
     <p class="muted">Explore the jungle with 4 to 9 friends. Fight creatures, solve mysteries, unlock new levels!</p>
-    ${unlockedLevels() > 1 ? `<p><span class="chip">🔓 You've unlocked up to Level ${unlockedLevels()}</span></p>` : ''}</div>
+    ${unlockedLevels() > 1 ? `<p><span class="chip">🔓 You've unlocked up to ${unlockedLevels() >= 9 ? 'the ⭐ Bonus Level' : `Level ${unlockedLevels()}`}</span></p>` : ''}</div>
   <div class="card">
     <h3>1. Who are you?</h3>
     <input id="name" maxlength="16" placeholder="Your name" value="${esc(ui.name)}" style="width:100%">
@@ -218,6 +218,7 @@ function header() {
 
 const me = () => state.players.find((p) => p.id === state.you);
 const isHost = () => state.hostId === state.you;
+const levelLabel = (l) => (l.bonus ? '⭐ Bonus Level' : `Level ${l.id}`);
 const nameOf = (id) => { const p = state.players.find((x) => x.id === id); return p ? esc(p.name) : '?'; };
 
 function hpBar(hp, max, cls = '') {
@@ -261,9 +262,9 @@ function lobby() {
 function levelSelect() {
   const tiles = state.levels.map((l) => {
     const locked = l.id > state.unlocked;
-    const body = `<div class="em">${locked ? '🔒' : l.emoji}</div><h3>Level ${l.id}: ${esc(l.name)}</h3>
+    const body = `<div class="em">${locked ? '🔒' : l.emoji}</div><h3>${levelLabel(l)}: ${esc(l.name)}</h3>
       <div class="muted">${locked ? `Beat level ${l.id - 1} to unlock!` : esc(l.blurb)}</div>`;
-    return `<button class="tile" data-act="${esc(JSON.stringify({ type: 'chooseLevel', level: l.id }))}" ${locked || !isHost() ? 'disabled' : ''}>${body}</button>`;
+    return `<button class="tile ${l.bonus ? 'bonus' : ''}" data-act="${esc(JSON.stringify({ type: 'chooseLevel', level: l.id }))}" ${locked || !isHost() ? 'disabled' : ''}>${body}</button>`;
   }).join('');
   return `<div class="card"><h2>🗺️ Choose a level</h2>
     <p class="muted">${isHost() ? 'You are the host — pick where to explore.' : 'The host is picking a level...'}
@@ -280,7 +281,7 @@ function map() {
       <div class="em">${s.emoji}</div><h3>${esc(s.name)}</h3><div class="muted">${TYPE_LABEL[s.type]}</div><div>${status}</div></button>`;
   }).join('');
   const left = state.spots.filter((s) => !s.done).length;
-  return `<div class="card"><h2>${state.level.emoji} Level ${state.level.id}: ${esc(state.level.name)}</h2>
+  return `<div class="card"><h2>${state.level.emoji} ${levelLabel(state.level)}: ${esc(state.level.name)}</h2>
     <p>${canPick ? '🧭 <b>You are leading!</b> Pick where the team goes next.' : `🧭 <b>${esc(leader.name)}</b> is leading. Waiting for them to choose...`}</p>
     <p class="muted">${left} place${left === 1 ? '' : 's'} left. Beat every creature and mystery, then defeat the boss!</p>
     <div class="grid">${tiles}</div></div>`;
@@ -307,8 +308,9 @@ function fight() {
   }
   const waiting = state.players.filter((p) => p.connected && p.hp > 0 && !e.chosen.includes(p.id)).length;
   return `<div class="card">
-    <div class="monster">${e.emoji}</div>
+    <div class="monster ${e.enraged ? 'enraged' : ''}">${e.emoji}</div>
     <h2 class="center">${esc(e.name)}</h2>
+    ${e.enraged ? '<p class="center rage">🔥 ENRAGED! It hits harder and uses its special move more often!</p>' : ''}
     ${hpBar(e.hp, e.maxHp, 'boss')}<p class="center">❤️ ${e.hp} / ${e.maxHp} · Round ${e.round}</p>
     <div class="log">${e.log.map(esc).join('\n')}</div>
   </div>
@@ -371,9 +373,9 @@ function levelWon() {
   const next = state.levels.find((l) => l.id === state.level.id + 1);
   const nextOpen = next && next.id <= state.unlocked;
   return `<div class="card center"><div class="monster">🏆</div><h2>${esc(state.level.name)} complete!</h2>
-    ${next ? `<p>${next.emoji} <b>${esc(next.name)}</b> is unlocked!</p>` : '<p>You beat every level in the jungle! More levels are coming soon... 🌴</p>'}
+    ${next ? `<p>${next.emoji} ${next.bonus ? '⭐ <b>BONUS LEVEL</b>: ' : ''}<b>${esc(next.name)}</b> is unlocked!</p>` : '<p>You beat every level in the jungle! More levels are coming soon... 🌴</p>'}
     ${isHost()
-      ? `<div class="row" style="justify-content:center">${nextOpen ? actBtn(`Go to Level ${next.id} ${next.emoji}`, { type: 'chooseLevel', level: next.id }) : ''}
+      ? `<div class="row" style="justify-content:center">${nextOpen ? actBtn(`Go to ${levelLabel(next)} ${next.emoji}`, { type: 'chooseLevel', level: next.id }) : ''}
          ${actBtn('🗺️ Level select', { type: 'menu' }, 'ghost')}</div>`
       : '<p class="muted">Waiting for the host...</p>'}
   </div>`;
@@ -434,6 +436,7 @@ const cutscenes = (() => {
     foe.querySelector('.cs-emoji').textContent = cs.emoji;
     foe.querySelector('.cs-name').textContent = cs.name;
     foe.style.opacity = 1;
+    foe.classList.toggle('cs-rage', !!cs.enraged);
     setHp(hp, cs.maxHp);
     el.hidden = false;
     for (const ev of cs.events) {
@@ -474,6 +477,13 @@ const cutscenes = (() => {
         move(hero, [{ transform: 'scale(1)' }, { transform: 'scale(1.2)' }, { transform: 'scale(1)' }]);
         pop(hero, ev.revive ? '✨ BACK!' : '+10', 'good');
         await wait(STEP);
+      } else if (ev.kind === 'enrage') {
+        fx.textContent = '🔥';
+        caption.textContent = `${cs.name} is ENRAGED! ${ev.name.toUpperCase()}!`;
+        foe.classList.add('cs-rage');
+        move(foe, [{ transform: 'scale(1)' }, { transform: 'scale(1.5) rotate(-6deg)' }, { transform: 'scale(1.3) rotate(6deg)' }, { transform: 'scale(1)' }], 900);
+        shake(el.querySelector('.cs-arena'));
+        await wait(STEP * 1.4);
       } else if (ev.kind === 'special') {
         fx.textContent = '⚠️';
         caption.textContent = `${cs.name} uses ${ev.name.toUpperCase()}!`;

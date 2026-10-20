@@ -23,6 +23,13 @@ Explore the jungle together, fight creatures, solve mysteries, and unlock new le
 7. **👺 Goblin Pond** (mostly fighting): fight a goblin gang, goblin archers, an orc warrior, a goblin shaman
    and an orc brute squad, cross the Goblin Riddle Bridge, open the goblins' treasure chest, then beat
    **the Pond Troll**.
+8. **❄️ Snowy Hills**: fight a frost wolf pack, a snow leopard and a polar bear, answer the Frozen Lake's
+   riddles, find out who raided your supplies, open the Frozen Door, then beat **the Yeti**.
+
+**⭐ Bonus Level: 🦎 Lizard People Forest** (unlocked by beating Snowy Hills): fight lizard warriors, monkey
+people raiders, fox people tricksters, a lizard shaman and the monkey people chief, escape the fox people's
+riddle trap, open the Dragon Egg Vault, then beat **the Dragon**. When the Dragon drops below half health
+it flies into a rage, hitting harder and breathing fire more often.
 
 Each level unlocks after you beat the one before it, and stays unlocked for good: the page remembers it in
 your browser and, on the claude.ai version, in your Claude account too.
@@ -60,6 +67,9 @@ To play with people anywhere, put it on a Node hosting service (for example Rend
 using `npm start` as the start command. The service sets `PORT` automatically.
 
 Run `npm test` to play through every level with pretend players for every team size from 4 to 9.
+
+`node browser-test.js <page.html> <first level> <last level>` plays the claude.ai page in a real browser
+(needs Playwright) as one explorer with AI teammates, starting from an account where `<first level>` is unlocked.
 
 Run `node balance.js` to see how often teams of each size get knocked out in each level, which helps when
 tuning creatures in `levels.js`.
