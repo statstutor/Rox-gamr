@@ -25,7 +25,7 @@ Explore the jungle together, fight creatures, solve mysteries, and unlock new le
    **the Pond Troll**.
 8. **❄️ Snowy Hills**: fight a frost wolf pack, a snow leopard and a polar bear, answer the Frozen Lake's
    riddles, find out who raided your supplies, open the Frozen Door, then beat **the Yeti**.
-9. **🦀 Crab Beach**: fight giant crabs, a jellyfish swarm (not much health, but their stings hurt a lot!),
+9. **🦀 Crab Beach**: fight giant crabs, a jellyfish swarm (not much health, but their stings hit really hard!),
    a giant lobster and a hungry shark, answer the Singing Seashells, find the picnic thief, open the
    Sunken Treasure Chest, then beat **the Blue Whale**.
 10. **🌼 Mysterious Meadow** (mostly mysteries): riddles from the Whispering Flowers and the Fairy Ring, a

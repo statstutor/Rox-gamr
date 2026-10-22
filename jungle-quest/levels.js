@@ -585,8 +585,8 @@ const LEVELS = [
         id: 'jellyfish', type: 'fight', name: 'Jellyfish Swarm', emoji: '🪼',
         intro: 'Glowing jellyfish float up out of the waves. They look squishy... but those stingers really hurt!',
         // Not much health, but every sting hurts a lot.
-        creature: { hpPer: 10, attacks: 2, dmg: [6, 9],
-          special: { every: 3, kind: 'all', name: 'Sting Storm', dmg: [3, 5] } },
+        creature: { hpPer: 10, attacks: 2, dmg: [10, 14],
+          special: { every: 3, kind: 'all', name: 'Sting Storm', dmg: [6, 9] } },
       },
       {
         id: 'seashells', type: 'riddle', name: 'The Singing Seashells', emoji: '🐚',
