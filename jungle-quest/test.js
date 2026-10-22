@@ -5,8 +5,8 @@ const assert = require('assert');
 const game = require('./game');
 const { LEVELS } = require('./levels');
 
-function playLevel(room, ids) {
-  game.act(room, ids[0], { type: 'chooseLevel', level: room.level ? room.level + 1 : 1 });
+function playLevel(room, ids, levelId) {
+  game.act(room, ids[0], { type: 'chooseLevel', level: levelId });
   let steps = 0;
   while (room.phase !== 'levelWon') {
     assert(++steps < 5000, `stuck in phase ${room.phase}`);
@@ -58,10 +58,20 @@ for (let n = game.MIN_PLAYERS; n <= game.MAX_PLAYERS; n++) {
   game.act(room, ids[0], { type: 'start' });
   assert.throws(() => game.act(room, ids[0], { type: 'chooseLevel', level: 2 }), /locked/);
 
-  for (const level of LEVELS) {
-    playLevel(room, ids);
+  const main = LEVELS.filter((l) => !l.bonus);
+  const bonus = LEVELS.filter((l) => l.bonus);
+  for (const level of main) {
+    for (const b of bonus) {
+      // A bonus level stays locked until the level it branches from is beaten.
+      if (level.id <= b.after) assert.throws(() => game.act(room, ids[0], { type: 'chooseLevel', level: b.id }), /locked/);
+    }
+    playLevel(room, ids, level.id);
     assert.strictEqual(room.level, level.id);
-    assert.strictEqual(room.unlocked, Math.min(level.id + 1, LEVELS.length), `beating level ${level.id} unlocks the next one`);
+    assert.strictEqual(room.unlocked, Math.min(level.id + 1, main.length), `beating level ${level.id} unlocks the next one`);
+  }
+  for (const b of bonus) {
+    playLevel(room, ids, b.id);
+    assert.strictEqual(room.unlocked, main.length, 'a bonus level does not change the main path');
   }
   assert(room.cutscene && room.cutscene.result === 'win' && room.cutscene.events.length, 'the last fight has a cutscene');
 

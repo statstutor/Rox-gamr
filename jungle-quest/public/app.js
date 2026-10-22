@@ -93,6 +93,9 @@ function connect() {
       lastCutscene = state.cutscene.id;
     }
     if (state.unlocked > unlockedLevels()) rememberUnlocked(state.unlocked);
+    // Forget anything past the last main level (bonus levels don't count toward it).
+    const lastMain = Math.max(...state.levels.filter((l) => !l.bonus).map((l) => l.id));
+    if (unlockedLevels() > lastMain) store.set('jq-unlocked', lastMain);
     render();
   }, () => leave('That game has ended.'), showError);
 }
@@ -193,7 +196,7 @@ function homeScreen() {
   return `
   <div class="hero"><div class="big">🌴🐊🐻🌴</div><h1>Jungle Quest</h1>
     <p class="muted">Explore the jungle with 4 to 9 friends. Fight creatures, solve mysteries, unlock new levels!</p>
-    ${unlockedLevels() > 1 ? `<p><span class="chip">🔓 You've unlocked up to ${unlockedLevels() >= 9 ? 'the ⭐ Bonus Level' : `Level ${unlockedLevels()}`}</span></p>` : ''}</div>
+    ${unlockedLevels() > 1 ? `<p><span class="chip">🔓 You've unlocked up to Level ${unlockedLevels()}${unlockedLevels() > BONUS_AFTER ? ' and the ⭐ Bonus Level' : ''}</span></p>` : ''}</div>
   <div class="card">
     <h3>1. Who are you?</h3>
     <input id="name" maxlength="16" placeholder="Your name" value="${esc(ui.name)}" style="width:100%">
@@ -218,6 +221,7 @@ function header() {
 
 const me = () => state.players.find((p) => p.id === state.you);
 const isHost = () => state.hostId === state.you;
+const BONUS_AFTER = 8; // the bonus level opens after this level (see levels.js)
 const levelLabel = (l) => (l.bonus ? '⭐ Bonus Level' : `Level ${l.id}`);
 const nameOf = (id) => { const p = state.players.find((x) => x.id === id); return p ? esc(p.name) : '?'; };
 
@@ -261,9 +265,9 @@ function lobby() {
 
 function levelSelect() {
   const tiles = state.levels.map((l) => {
-    const locked = l.id > state.unlocked;
+    const locked = !l.open;
     const body = `<div class="em">${locked ? '🔒' : l.emoji}</div><h3>${levelLabel(l)}: ${esc(l.name)}</h3>
-      <div class="muted">${locked ? `Beat level ${l.id - 1} to unlock!` : esc(l.blurb)}</div>`;
+      <div class="muted">${locked ? `Beat level ${l.bonus ? l.after : l.id - 1} to unlock!` : esc(l.blurb)}</div>`;
     return `<button class="tile ${l.bonus ? 'bonus' : ''}" data-act="${esc(JSON.stringify({ type: 'chooseLevel', level: l.id }))}" ${locked || !isHost() ? 'disabled' : ''}>${body}</button>`;
   }).join('');
   return `<div class="card"><h2>🗺️ Choose a level</h2>
@@ -370,12 +374,18 @@ function code() {
 }
 
 function levelWon() {
-  const next = state.levels.find((l) => l.id === state.level.id + 1);
-  const nextOpen = next && next.id <= state.unlocked;
-  return `<div class="card center"><div class="monster">🏆</div><h2>${esc(state.level.name)} complete!</h2>
-    ${next ? `<p>${next.emoji} ${next.bonus ? '⭐ <b>BONUS LEVEL</b>: ' : ''}<b>${esc(next.name)}</b> is unlocked!</p>` : '<p>You beat every level in the jungle! More levels are coming soon... 🌴</p>'}
+  const here = state.level;
+  // After a bonus level, carry on along the main path from where the bonus branched off.
+  const next = state.levels.find((l) => !l.bonus && l.id === (here.bonus ? here.after : here.id) + 1);
+  const bonus = !here.bonus && state.levels.find((l) => l.bonus && l.after === here.id && l.open);
+  const unlockedNote = [next && next.open && !here.bonus ? `${next.emoji} <b>${esc(next.name)}</b>` : '',
+    bonus ? `${bonus.emoji} ⭐ <b>BONUS LEVEL: ${esc(bonus.name)}</b>` : ''].filter(Boolean);
+  return `<div class="card center"><div class="monster">🏆</div><h2>${esc(here.name)} complete!</h2>
+    ${unlockedNote.length ? `<p>${unlockedNote.join(' and ')} ${unlockedNote.length > 1 ? 'are' : 'is'} unlocked!</p>`
+      : next ? '' : '<p>You beat every level in the jungle! More levels are coming soon... 🌴</p>'}
     ${isHost()
-      ? `<div class="row" style="justify-content:center">${nextOpen ? actBtn(`Go to ${levelLabel(next)} ${next.emoji}`, { type: 'chooseLevel', level: next.id }) : ''}
+      ? `<div class="row" style="justify-content:center">${next && next.open ? actBtn(`Go to ${levelLabel(next)} ${next.emoji}`, { type: 'chooseLevel', level: next.id }) : ''}
+         ${bonus ? actBtn(`Try the ${levelLabel(bonus)} ${bonus.emoji}`, { type: 'chooseLevel', level: bonus.id }, 'ghost') : ''}
          ${actBtn('🗺️ Level select', { type: 'menu' }, 'ghost')}</div>`
       : '<p class="muted">Waiting for the host...</p>'}
   </div>`;

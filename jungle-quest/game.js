@@ -19,6 +19,12 @@ const AVATARS = ['🦁', '🐯', '🦊', '🐼', '🐨', '🐸', '🐵', '🦉',
 
 const rooms = new Map();
 
+// `room.unlocked` is the furthest main level reached. Bonus levels sit beside the
+// main path: each opens once the level named in its `after` is beaten.
+const MAIN_LEVELS = LEVELS.filter((l) => !l.bonus);
+const LAST_MAIN = MAIN_LEVELS[MAIN_LEVELS.length - 1].id;
+const isOpen = (room, l) => (l.bonus ? room.unlocked > l.after : l.id <= room.unlocked);
+
 class GameError extends Error {}
 const fail = (msg) => { throw new GameError(msg); };
 
@@ -62,7 +68,7 @@ function newPlayer(name, avatar, id) {
 
 function createRoom({ name, avatar, unlocked }) {
   const host = newPlayer(name, avatar);
-  const maxLevel = Math.max(1, Math.min(LEVELS.length, Number(unlocked) || 1));
+  const maxLevel = Math.max(1, Math.min(LAST_MAIN, Number(unlocked) || 1));
   const room = {
     code: newCode(),
     hostId: host.id,
@@ -141,7 +147,7 @@ function act(room, playerId, action) {
       if (room.phase !== 'levelSelect' && room.phase !== 'levelWon') fail('Not now.');
       const id = Number(action.level);
       if (!LEVELS[id - 1]) fail('No such level.');
-      if (id > room.unlocked) fail('That level is still locked!');
+      if (!isOpen(room, LEVELS[id - 1])) fail('That level is still locked!');
       startLevel(room, id);
       return;
     }
@@ -286,13 +292,13 @@ function finishSpot(room, message) {
   if (spot.boss) {
     const level = levelOf(room);
     room.phase = 'levelWon';
-    if (room.level < LEVELS.length && room.unlocked <= room.level) {
-      room.unlocked = room.level + 1;
-      const next = LEVELS[room.level];
-      say(room, `🏆 ${level.name} is beaten! ${next.emoji} ${next.bonus ? 'BONUS LEVEL: ' : ''}${next.name} is now unlocked!`);
-    } else {
-      say(room, `🏆 ${level.name} is beaten!`);
+    const opened = [];
+    if (!level.bonus && level.id < LAST_MAIN && room.unlocked <= level.id) {
+      room.unlocked = level.id + 1;
+      opened.push(LEVELS[level.id], ...LEVELS.filter((l) => l.bonus && l.after === level.id));
     }
+    const names = opened.map((l) => `${l.emoji} ${l.bonus ? 'BONUS LEVEL ' : ''}${l.name}`);
+    say(room, `🏆 ${level.name} is beaten!${names.length ? ` ${names.join(' and ')} ${names.length > 1 ? 'are' : 'is'} now unlocked!` : ''}`);
     return;
   }
   room.phase = 'map';
@@ -550,8 +556,8 @@ function view(room, playerId) {
     maxPlayers: MAX_PLAYERS,
     players: room.players.map(({ id, name, avatar, hp, maxHp, potions, connected, bot }) => ({ id, name, avatar, hp, maxHp, potions, connected, bot: !!bot })),
     unlocked: room.unlocked,
-    levels: LEVELS.map(({ id, name, emoji, blurb, theme, bonus }) => ({ id, name, emoji, blurb, theme, bonus: !!bonus })),
-    level: level && { id: level.id, name: level.name, emoji: level.emoji, theme: level.theme, bonus: !!level.bonus },
+    levels: LEVELS.map((l) => ({ id: l.id, name: l.name, emoji: l.emoji, blurb: l.blurb, theme: l.theme, bonus: !!l.bonus, after: l.after || null, open: isOpen(room, l) })),
+    level: level && { id: level.id, name: level.name, emoji: level.emoji, theme: level.theme, bonus: !!level.bonus, after: level.after || null },
     spots: room.spots && room.spots.map((s) => {
       const def = level.spots.find((d) => d.id === s.id);
       return { id: s.id, type: def.type, name: def.name, emoji: def.emoji, boss: s.boss, done: s.done,

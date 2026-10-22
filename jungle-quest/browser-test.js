@@ -19,6 +19,10 @@ try { ({ chromium } = require('playwright')); } catch {
 const [page = '', first = '1', last = first, shots = ''] = process.argv.slice(2);
 const FIRST = Number(first);
 const LAST = Number(last);
+// What the account needs to remember for FIRST to be open: a bonus level opens after its `after` level.
+const { LEVELS } = require('./levels');
+const firstLevel = LEVELS.find((l) => l.id === FIRST);
+const START_UNLOCKED = firstLevel && firstLevel.bonus ? firstLevel.after + 1 : FIRST;
 if (!fs.existsSync(page)) { console.error('Build the page first: node build-artifact.js <file.html>'); process.exit(1); }
 
 // The real page gets its charset from claude.ai's wrapper; add one for this local copy.
@@ -100,7 +104,7 @@ async function beatLevel(p, level, seen, errors) {
     p.on('pageerror', (e) => errors.push(e.message));
     await p.goto(url);
     // The account remembers the starting level; this browser remembers nothing.
-    await p.evaluate((n) => { localStorage.clear(); localStorage.setItem('mockdb:data/users/tester1/progress', JSON.stringify({ unlocked: n })); }, FIRST);
+    await p.evaluate((n) => { localStorage.clear(); localStorage.setItem('mockdb:data/users/tester1/progress', JSON.stringify({ unlocked: n })); }, START_UNLOCKED);
     await p.reload();
     await p.waitForTimeout(600);
     console.log('Home screen:', await p.locator('.chip').first().textContent().catch(() => '(no unlock note)'));

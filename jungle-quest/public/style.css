@@ -13,6 +13,8 @@ body.savanna { --bg1: #4a3410; --bg2: #a2782a; --accent: #ffd36b; }
 body.swamp { --bg1: #142016; --bg2: #3c5a2c; --accent: #c6f07a; }
 body.snow { --bg1: #3d5a73; --bg2: #a9c3d6; --accent: #ffffff; }
 body.lizard { --bg1: #0c2a24; --bg2: #3f6b2a; --accent: #ffb347; }
+body.beach { --bg1: #0f5f80; --bg2: #d9b77a; --accent: #ffe27a; }
+body.meadow { --bg1: #2f4a2a; --bg2: #8fae5d; --accent: #ffd1f0; }
 html { color-scheme: dark; }
 body {
   margin: 0; min-height: 100vh; color: var(--text);

@@ -25,8 +25,15 @@ Explore the jungle together, fight creatures, solve mysteries, and unlock new le
    **the Pond Troll**.
 8. **❄️ Snowy Hills**: fight a frost wolf pack, a snow leopard and a polar bear, answer the Frozen Lake's
    riddles, find out who raided your supplies, open the Frozen Door, then beat **the Yeti**.
+9. **🦀 Crab Beach**: fight giant crabs, a jellyfish swarm (not much health, but their stings hurt a lot!),
+   a giant lobster and a hungry shark, answer the Singing Seashells, find the picnic thief, open the
+   Sunken Treasure Chest, then beat **the Blue Whale**.
+10. **🌼 Mysterious Meadow** (mostly mysteries): riddles from the Whispering Flowers and the Fairy Ring, a
+   clue hunt for who is stomping the flowers, and the Butterfly Gate code lock, with a giant anaconda and a
+   scorpion swarm to fight before **Bigfoot**.
 
-**⭐ Bonus Level: 🦎 Lizard People Forest** (unlocked by beating Snowy Hills): fight lizard warriors, monkey
+**⭐ Bonus Level: 🦎 Lizard People Forest** (opens when you beat Snowy Hills, beside Crab Beach; play it
+whenever you like, you don't need it to keep going): fight lizard warriors, monkey
 people raiders, fox people tricksters, a lizard shaman and the monkey people chief, escape the fox people's
 riddle trap, open the Dragon Egg Vault, then beat **the Dragon**. When the Dragon drops below half health
 it flies into a rage, hitting harder and breathing fire more often.
